@@ -172,8 +172,6 @@ The project currently contains one main database table.
 
 Because this mini project currently uses one main table, there are no relationships between multiple entities.
 
-> **ER Diagram Image:** Insert the ER diagram screenshot here if required by the submission.
-
 ---
 
 # 6. API Design
