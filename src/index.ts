@@ -158,4 +158,34 @@ app.delete("/api/advising-requests/:id", async (c) => {
   return c.body(null, 204);
 });
 
+app.get("/api/integration/alumni-status", async (c) => {
+  const partnerUrl =
+    "https://alumni-network-integration.phyo2lay.workers.dev/api/integration/status";
+
+  const requestedAt = new Date().toISOString();
+
+  try {
+    const response = await fetch(partnerUrl);
+
+    const data = await response.json();
+
+    return c.json({
+      consumer: "advising-platform",
+      partner: "alumni-network",
+      partner_url: partnerUrl,
+      requested_at: requestedAt,
+      partner_status: response.status,
+      data,
+    });
+  } catch (error) {
+    return c.json(
+      {
+        error: "Failed to contact Alumni Network API",
+        requested_at: requestedAt,
+        details: error instanceof Error ? error.message : String(error),
+      },
+      502
+    );
+  }
+});
 export default app;
