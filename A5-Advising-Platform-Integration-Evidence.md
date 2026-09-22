@@ -121,13 +121,15 @@ X-Webhook-Signature: <HMAC-SHA256 hex of exact raw body using WEBHOOK_SECRET>
 | Item | Evidence |
 | --- | --- |
 | Postman result | HTTP `502 Bad Gateway` |
-| Event ID shown in response | `slot-booked-07baf2bf-dd9d-41ad-ba48-1b9b55617750` |
+| Event ID shown in response | `slot-booked-9c732ea9-791c-490e-9415-e7136d025aaa` |
 | API result | `fallback: true`, `error: "Partner webhook request failed"` |
 | Recovery | Manual retry after Team 24's endpoint is available; no automatic retry is implemented or claimed. |
 
 Another production sender attempt at `2026-09-22T11:26:02Z` recorded event ID `slot-booked-8591cc22-af9b-4731-8a13-ace4140ba9d7` in D1 with source `advising-platform-sender` and status `failed`. The partner did not return a usable response before the Worker timeout. This proves the trigger, outgoing-event creation, and failure logging—not a successful partner receipt.
 
 **Screenshot evidence to submit:** the Postman response showing the generated event ID and HTTP `502`.
+
+![Webhook sender degradation — Postman controlled 502 fallback](screenshots/a5-webhook-sender-fallback.png)
 
 **Partner-side sender confirmation:** Campus Insights' Firestore `webhook_logs` screenshot shows a record with source `AdvisingPlatform`, type `slot_booked`, status `SUCCESS`, lecturer email `john.doe@mfu.ac.th`, booked date `2026-09-25`, time slot `10:00-11:00`, and a recorded processing time. This confirms Campus Insights successfully stored an Advising Platform booking event. The Firestore record uses Campus Insights' internal field names (`bookedDate` and `timeSlot`); it is evidence of their stored representation, not a claim that our outgoing JSON uses those names.
 
@@ -175,6 +177,8 @@ Local automated test passed this exact flow: first signed delivery inserted one 
 
 **Stored failure log:** D1 `integration_events` contains the same event ID with source `advising-platform-sender`, status `failed`, and created time `2026-09-22 11:26:12`.
 
+The Postman screenshot above shows a later controlled fallback test with a different generated event ID. Each send creates its own event ID; both demonstrate the same graceful-degradation behavior.
+
 **Additional safe fallback:** `GET /api/campus-insights/availability/prof_101?date=2026-09-25` returns HTTP `503` with `fallback: true` because Team 24 has not supplied an availability endpoint. No partner data is invented.
 
 **Recovery behavior:** manual retry only. The Worker does not claim or implement automatic retry.
@@ -197,3 +201,4 @@ The following actual screenshots should be attached with this Markdown file. The
 | `screenshots/a5-campus-insights-webhook-success.jpeg` | Campus Insights test bench shows a signed POST to our receiver returned HTTP `200`, `signatureVerified: true`, and `duplicate: false`. |
 | `screenshots/a5-campus-insights-firestore-confirmation.jpeg` | Campus Insights Firestore log shows a successful `slot_booked` record with source `AdvisingPlatform`. |
 | `screenshots/a5-consumer-success.png` | Browser request to the deployed lecturer consumer endpoint returned `success: true`, partner status `200`, and real Campus Insights lecturer data. |
+| `screenshots/a5-webhook-sender-fallback.png` | Postman request to the sender endpoint returned a generated event ID and controlled HTTP `502` fallback. |
