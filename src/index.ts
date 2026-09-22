@@ -5,13 +5,15 @@ import { createWebhookSignature, verifyWebhookSignature } from "./utils/signatur
 type Bindings = CloudflareBindings & CampusInsightsConfig & {
   WEBHOOK_SECRET?: string;
   PARTNER_WEBHOOK_SECRET?: string;
+  PARTNER_WEBHOOK_SIGNATURE?: string;
   PARTNER_WEBHOOK_URL?: string;
 };
 type IncomingWebhookPayload = { eventId?: string; eventType?: string; id?: string; type?: string; [key: string]: unknown };
 type SlotBookedPayload = { eventId: string; eventType: "slot_booked"; studentId: string; bookedSlot: { date: string; time: string }; lecturerEmail: string; serverTimestamp: string };
 
 const app = new Hono<{ Bindings: Bindings }>();
-const SIGNATURE_HEADER = "X-Webhook-Signature";
+const INBOUND_SIGNATURE_HEADER = "X-Webhook-Signature";
+const CAMPUS_INSIGHTS_SIGNATURE_HEADER = "x-signature";
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -64,8 +66,8 @@ app.get("/api/campus-insights/booking-stats", async (c) => { const period = c.re
 async function receiveWebhook(c: any, source: string) {
   const secret = c.env.WEBHOOK_SECRET;
   if (!secret) return c.json({ success: false, error: "Webhook secret is not configured" }, 500);
-  const rawBody = await c.req.text(); const signature = c.req.header(SIGNATURE_HEADER);
-  if (!signature) return c.json({ success: false, error: `${SIGNATURE_HEADER} header required` }, 401);
+  const rawBody = await c.req.text(); const signature = c.req.header(INBOUND_SIGNATURE_HEADER);
+  if (!signature) return c.json({ success: false, error: `${INBOUND_SIGNATURE_HEADER} header required` }, 401);
   if (!(await verifyWebhookSignature(rawBody, signature, secret))) return c.json({ success: false, error: "Invalid webhook signature" }, 401);
   let payload: IncomingWebhookPayload; try { payload = JSON.parse(rawBody) as IncomingWebhookPayload; } catch { return c.json({ success: false, error: "Invalid JSON payload" }, 400); }
   const eventId = payload.eventId ?? payload.id; const eventType = payload.eventType ?? payload.type;
@@ -78,16 +80,17 @@ app.post("/api/webhooks/partner", async (c) => receiveWebhook(c, "campus-insight
 app.post("/api/integration/provider-test", async (c) => receiveWebhook(c, "provider-test"));
 
 app.post("/api/webhooks/send-test", async (c) => {
-  const secret = c.env.PARTNER_WEBHOOK_SECRET; const partnerUrl = c.env.PARTNER_WEBHOOK_URL;
-  if (!secret || !partnerUrl) return c.json({ success: false, source: "campus-insights", fallback: true, error: !partnerUrl ? "Partner webhook URL is not configured" : "Partner webhook secret is not configured" }, 503);
+  const partnerUrl = c.env.PARTNER_WEBHOOK_URL;
+  const partnerSignature = c.env.PARTNER_WEBHOOK_SIGNATURE;
+  if (!partnerUrl || !partnerSignature) return c.json({ success: false, source: "campus-insights", fallback: true, error: !partnerUrl ? "Partner webhook URL is not configured" : "Partner webhook signature is not configured" }, 503);
   const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
   const input = parsed.body as { studentId?: string; lecturerEmail?: string; bookedSlot?: { date?: string; time?: string } };
   const studentId = input.studentId; const lecturerEmail = input.lecturerEmail; const date = input.bookedSlot?.date; const time = input.bookedSlot?.time;
   if (!isNonEmptyString(studentId) || !isNonEmptyString(lecturerEmail) || !isValidEmail(lecturerEmail) || !isNonEmptyString(date) || !isNonEmptyString(time)) return c.json({ success: false, error: "studentId, lecturerEmail, bookedSlot.date, and bookedSlot.time are required" }, 400);
   const payload: SlotBookedPayload = { eventId: `slot-booked-${crypto.randomUUID()}`, eventType: "slot_booked", studentId, lecturerEmail, bookedSlot: { date, time }, serverTimestamp: new Date().toISOString() };
-  const body = JSON.stringify(payload); const signature = await createWebhookSignature(body, secret); const requestedAt = new Date().toISOString();
+  const body = JSON.stringify(payload); const requestedAt = new Date().toISOString();
   try {
-    const response = await fetch(partnerUrl, { method: "POST", headers: { "Content-Type": "application/json", [SIGNATURE_HEADER]: signature }, body, signal: AbortSignal.timeout(8_000) }); const partnerBody = await response.text();
+    const response = await fetch(partnerUrl, { method: "POST", headers: { "Content-Type": "application/json", [CAMPUS_INSIGHTS_SIGNATURE_HEADER]: partnerSignature }, body, signal: AbortSignal.timeout(8_000) }); const partnerBody = await response.text();
     await logIntegrationEvent(c.env.advising_db, payload.eventId, payload.eventType, "advising-platform-sender", response.ok ? "sent" : "failed", body, JSON.stringify({ requestedAt, partnerStatus: response.status, partnerBody }));
     return c.json({ success: response.ok, eventId: payload.eventId, requestedAt, partnerStatus: response.status, partnerBody, fallback: !response.ok, recovery: response.ok ? undefined : "Retry manually after the partner has recovered." }, response.ok ? 200 : 502);
   } catch (error) {

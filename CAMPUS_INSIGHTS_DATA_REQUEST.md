@@ -1,47 +1,67 @@
 # Advising Platform × Campus Insights (Team 24)
 
-## Confirmed contract
+## Confirmed, configured integration
 
-Campus Insights has confirmed this lecturer lookup endpoint. Its shared development deployment may be unavailable, so Advising Platform allows it to be overridden with `CAMPUS_INSIGHTS_LECTURER_URL`.
+The Team 24 provider endpoint is:
 
-`GET https://obscure-potato-r46p4qgrgqxrhvvr-5001.app.github.dev/campus-insight-623f0/us-central/api/api/v1/lecturers?email={email}`
+`GET https://campus-insight-b9mp.onrender.com/api/v1/lecturers?email={lecturerEmail}`
 
-The documented response has a `status` and a `data` object with `id`, `email`, `name`, `school`, `major`, `rating`, `reviewCount`, `officeHours`, and `createdAt`. Our API preserves that partner response inside `data` rather than remapping fields.
+It requires the `x-api-key` header. Advising Platform uses the Cloudflare secret `CAMPUS_INSIGHTS_API_KEY` for its value and exposes the result through:
 
-Campus Insights also showed this inbound webhook payload:
+`GET /api/campus-insights/lecturers/:email`
+
+The partner response is preserved under `data`, without fabricated or remapped lecturer fields. The documented response includes `id`, `email`, `name`, `school`, `major`, `rating`, `reviewCount`, `officeHours`, and `createdAt`.
+
+Campus Insights' booking-event receiver is:
+
+`POST https://campus-insight-b9mp.onrender.com/api/v1/webhooks/advising-event`
+
+Advising Platform sends the agreed booking event through `POST /api/webhooks/send-test`. Set these Cloudflare secrets before using it:
+
+| Secret | Purpose |
+| --- | --- |
+| `PARTNER_WEBHOOK_URL` | The complete Team 24 receiver URL above. |
+| `PARTNER_WEBHOOK_SIGNATURE` | Exact value required by Team 24 in the `x-signature` header. |
+
+The supplied Team 24 material names the required outbound header `x-signature`, but does not document its generation algorithm. Advising Platform therefore sends the configured value exactly and does not guess an HMAC/hash algorithm. Team 24 should confirm whether it is static, an HMAC of the raw body, or another scheme before it is rotated.
+
+The outgoing payload is:
 
 ```json
 {
-  "eventId": "evt_test_101",
+  "eventId": "slot-booked-<generated UUID>",
   "eventType": "slot_booked",
+  "studentId": "<student ID>",
   "lecturerEmail": "john.doe@mfu.ac.th",
-  "bookedSlot": { "date": "2026-09-25", "time": "10:00-11:00" },
-  "serverTimestamp": "2025-07-14T08:00:00.000Z"
+  "bookedSlot": {
+    "date": "YYYY-MM-DD",
+    "time": "HH:MM-HH:MM"
+  },
+  "serverTimestamp": "ISO-8601 timestamp"
 }
 ```
 
-The documented response example is `{ "status": "Webhook received and logged successfully" }`. The full Campus Insights webhook URL and its authentication requirements were not supplied, so they are not guessed or committed.
-
 ## Requested / not yet confirmed
 
-These are data requirements, not confirmed Campus Insights endpoints: lecturer availability, ratings/review summary, common advising topics, and appointment/booking statistics. Team 24 must supply each exact URL, required authentication, request parameters, and response schema.
+Availability, ratings/review summary, common advising topics, and booking statistics remain requested data requirements, not confirmed Team 24 endpoints. Their future URL templates can be configured with `CAMPUS_INSIGHTS_AVAILABILITY_URL`, `CAMPUS_INSIGHTS_RATINGS_URL`, `CAMPUS_INSIGHTS_TOPICS_URL`, and `CAMPUS_INSIGHTS_BOOKING_STATS_URL`; `{lecturerId}`, `{date}`, and `{period}` are URL encoded. Until configured, their Advising Platform endpoints return controlled `503` JSON with `fallback: true` and never invent data.
 
-When supplied, configure these non-secret URL templates. Template placeholders are URL encoded: `{lecturerId}`, `{date}`, and `{period}`.
+## Advising Platform inbound webhook
 
-| Need | Advising Platform endpoint | Configuration |
-| --- | --- | --- |
-| Lecturer lookup | `GET /api/campus-insights/lecturers/:email` | `CAMPUS_INSIGHTS_LECTURER_URL` (optional override) |
-| Availability | `GET /api/campus-insights/availability/:lecturerId?date=YYYY-MM-DD` | `CAMPUS_INSIGHTS_AVAILABILITY_URL` |
-| Ratings | `GET /api/campus-insights/ratings/:lecturerId` | `CAMPUS_INSIGHTS_RATINGS_URL` |
-| Topics | `GET /api/campus-insights/topics?period=YYYY-MM` | `CAMPUS_INSIGHTS_TOPICS_URL` |
-| Booking statistics | `GET /api/campus-insights/booking-stats?period=YYYY-MM` | `CAMPUS_INSIGHTS_BOOKING_STATS_URL` |
+Campus Insights can send events to:
 
-An unconfigured endpoint returns a controlled `503` response with `fallback: true`; it never returns invented data.
+`POST https://advising-platform.aron078.workers.dev/api/webhooks/partner`
 
-## Webhook flow and security
+Required header: `X-Webhook-Signature`, containing an HMAC-SHA256 of the exact raw JSON body using the shared `WEBHOOK_SECRET`. Our receiver validates the signature before parsing JSON, requires `eventId` and `eventType`, and uses the unique `integration_events.event_id` constraint for idempotency.
 
-`POST /api/webhooks/partner` receives Campus Insights events. It reads the raw body, verifies an HMAC-SHA256 signature in `X-Webhook-Signature` using `WEBHOOK_SECRET`, then validates `eventId` and `eventType`. `integration_events.event_id` is unique, so repeated deliveries return `duplicate: true` without another event record.
+## Secret management
 
-`POST /api/webhooks/send-test` sends the agreed `slot_booked` contract after validating `studentId`, `lecturerEmail`, and `bookedSlot`. It serializes once, signs with HMAC-SHA256 using `PARTNER_WEBHOOK_SECRET`, sends the same header, and records the response in `integration_events`. Its target is only `PARTNER_WEBHOOK_URL`; this must be set after Team 24 gives the complete URL.
+Use Wrangler secrets in production, never committed files:
 
-All secrets must be set with Wrangler secrets, for example `wrangler secret put WEBHOOK_SECRET`. Do not commit `.dev.vars`, `.dev.vars*`, credentials, or signatures. Partner timeouts/network failures return controlled fallback JSON and are logged for manual retry; there is no automatic retry.
+```sh
+wrangler secret put CAMPUS_INSIGHTS_API_KEY
+wrangler secret put PARTNER_WEBHOOK_URL
+wrangler secret put PARTNER_WEBHOOK_SIGNATURE
+wrangler secret put WEBHOOK_SECRET
+```
+
+`.dev.vars` is ignored. Do not share, commit, log, or paste actual secret values into chat or documentation. Any secret previously shared outside its intended secure channel should be rotated.

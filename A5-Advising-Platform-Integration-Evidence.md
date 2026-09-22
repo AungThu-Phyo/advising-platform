@@ -4,10 +4,10 @@ Evidence is intentionally limited to results actually obtained from this reposit
 
 ## 1. Consumer Proof
 
-- Partner URL: `https://obscure-potato-r46p4qgrgqxrhvvr-5001.app.github.dev/campus-insight-623f0/us-central/api/api/v1/lecturers`
+- Partner URL: `https://campus-insight-b9mp.onrender.com/api/v1/lecturers`
 - Advising Platform endpoint: `GET /api/campus-insights/lecturers/:email`
 - Request parameter: `email=john.doe@mfu.ac.th`
-- At `2026-09-22T10:25:04Z`, direct request to the documented shared URL returned HTTP `404` with an empty response body. The deployed Advising Platform proxy returned HTTP `502` with:
+- The former GitHub development URL was tested at `2026-09-22T10:25:04Z`; it returned HTTP `404` with an empty response body. The deployed Advising Platform proxy then returned HTTP `502` with:
 
 ```json
 {
@@ -20,7 +20,7 @@ Evidence is intentionally limited to results actually obtained from this reposit
 }
 ```
 
-This is a real degradation result, not a successful consumer response.
+Team 24 subsequently supplied the Render URL above and documented its required `x-api-key` authentication. At `2026-09-22T10:43:04Z`, the deployed proxy correctly returned HTTP `503` with `Campus Insights API key is not configured`, rather than sending an unauthenticated request. A successful consumer proof remains pending installation of `CAMPUS_INSIGHTS_API_KEY` and a real authenticated response.
 
 ## 2. Provider Proof
 
@@ -41,8 +41,9 @@ This is a real degradation result, not a successful consumer response.
 
 - Trigger: `POST /api/webhooks/send-test` with `studentId`, `lecturerEmail`, and `bookedSlot`.
 - Outgoing contract: generated `eventId`, `eventType: slot_booked`, `studentId`, `bookedSlot`, `lecturerEmail`, and `serverTimestamp`.
-- Target URL: `PARTNER_WEBHOOK_URL` only; the full Team 24 URL was not visible in shared material and is not guessed.
-- Partner response and stored log: pending Team 24 providing its full webhook URL and authentication requirements. Every configured send records timestamp, payload, HTTP status/body or controlled failure in `integration_events`.
+- Target URL: `https://campus-insight-b9mp.onrender.com/api/v1/webhooks/advising-event`, configured only through `PARTNER_WEBHOOK_URL`.
+- Authentication: Team 24 requires `x-signature`; its exact configured value is held in `PARTNER_WEBHOOK_SIGNATURE`. The supplied material did not state how to generate or rotate this value, so the application does not invent an HMAC/hash algorithm.
+- Partner response and stored log: pending installation of `PARTNER_WEBHOOK_URL` and `PARTNER_WEBHOOK_SIGNATURE` as production secrets. Every configured send records timestamp, payload, HTTP status/body or controlled failure in `integration_events`.
 
 ## 5. Idempotency Proof
 
@@ -61,7 +62,7 @@ For an unavailable Campus Insights API, consumer endpoints return controlled JSO
 }
 ```
 
-For a missing target URL, the sender returns a controlled `503`; for a failed configured send, it records a `failed` integration event and returns `502` with `fallback: true`. Recovery is **manual retry after the partner recovers**; no automatic retry is claimed. Real breakage timestamp, response, and recovery evidence are pending a production test against a configured Team 24 endpoint.
+For a missing target URL or `x-signature`, the sender returns a controlled `503`; for a failed configured send, it records a `failed` integration event and returns `502` with `fallback: true`. Recovery is **manual retry after the partner recovers**; no automatic retry is claimed. Real breakage timestamp, response, and recovery evidence are pending a production test against a configured Team 24 endpoint.
 
 At `2026-09-22T10:25:04Z`, the configured lecturer consumer received the partner HTTP `404` above and returned controlled HTTP `502`. At the same time, `GET /api/campus-insights/availability/prof_101?date=2026-09-25` returned controlled HTTP `503` because no availability URL is configured. Both results confirm graceful degradation; neither represents automatic recovery.
 

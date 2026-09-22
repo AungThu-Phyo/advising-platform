@@ -1,0 +1,5 @@
+# Local development placeholders only. Do not put real values in this committed file.
+WEBHOOK_SECRET=replace-with-inbound-hmac-secret
+CAMPUS_INSIGHTS_API_KEY=replace-with-team-24-api-key
+PARTNER_WEBHOOK_URL=https://campus-insight-b9mp.onrender.com/api/v1/webhooks/advising-event
+PARTNER_WEBHOOK_SIGNATURE=replace-with-team-24-x-signature-value

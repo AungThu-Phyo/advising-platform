@@ -47,10 +47,10 @@ assert.equal((await request("/api/webhooks/partner", { method: "POST", body, hea
 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async () => new Response('{"status":"Webhook received and logged successfully"}', { status: 200 });
-const sender = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, { PARTNER_WEBHOOK_SECRET: "sender-secret", PARTNER_WEBHOOK_URL: "https://example.invalid/webhook" });
+const sender = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, { PARTNER_WEBHOOK_SIGNATURE: "test-signature", PARTNER_WEBHOOK_URL: "https://example.invalid/webhook" });
 assert.equal(sender.status, 200);
 globalThis.fetch = async () => { throw new TypeError("network unavailable"); };
-const degraded = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "student-2", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, { PARTNER_WEBHOOK_SECRET: "sender-secret", PARTNER_WEBHOOK_URL: "https://example.invalid/webhook" });
+const degraded = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "student-2", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, { PARTNER_WEBHOOK_SIGNATURE: "test-signature", PARTNER_WEBHOOK_URL: "https://example.invalid/webhook" });
 assert.equal(degraded.status, 502);
 assert.equal((await degraded.json()).fallback, true);
 globalThis.fetch = originalFetch;
