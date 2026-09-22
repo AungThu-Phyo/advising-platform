@@ -48,6 +48,8 @@ Observed response body (non-secret fields):
 
 **Screenshot evidence to submit:** terminal/browser response for the production request above.
 
+![Consumer proof — successful Campus Insights lecturer response](screenshots/a5-consumer-success.png)
+
 ## 2. Provider Proof
 
 **Our provider endpoint:** `POST https://advising-platform.aron078.workers.dev/api/integration/provider-test`
@@ -194,3 +196,4 @@ The following actual screenshots should be attached with this Markdown file. The
 | --- | --- |
 | `screenshots/a5-campus-insights-webhook-success.jpeg` | Campus Insights test bench shows a signed POST to our receiver returned HTTP `200`, `signatureVerified: true`, and `duplicate: false`. |
 | `screenshots/a5-campus-insights-firestore-confirmation.jpeg` | Campus Insights Firestore log shows a successful `slot_booked` record with source `AdvisingPlatform`. |
+| `screenshots/a5-consumer-success.png` | Browser request to the deployed lecturer consumer endpoint returned `success: true`, partner status `200`, and real Campus Insights lecturer data. |
