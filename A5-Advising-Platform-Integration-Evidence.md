@@ -42,8 +42,10 @@ Team 24 subsequently supplied the Render URL above and documented its required `
 - Trigger: `POST /api/webhooks/send-test` with `studentId`, `lecturerEmail`, and `bookedSlot`.
 - Outgoing contract: generated `eventId`, `eventType: slot_booked`, `studentId`, `bookedSlot`, `lecturerEmail`, and `serverTimestamp`.
 - Target URL: `https://campus-insight-b9mp.onrender.com/api/v1/webhooks/advising-event`, configured only through `PARTNER_WEBHOOK_URL`.
-- Authentication: Team 24 requires `x-signature`; its exact configured value is held in `PARTNER_WEBHOOK_SIGNATURE`. The supplied material did not state how to generate or rotate this value, so the application does not invent an HMAC/hash algorithm.
-- Partner response and stored log: pending installation of `PARTNER_WEBHOOK_URL` and `PARTNER_WEBHOOK_SIGNATURE` as production secrets. Every configured send records timestamp, payload, HTTP status/body or controlled failure in `integration_events`.
+- Authentication: Team 24 confirmed that its shared API key is used for all calls. Advising Platform sends `CAMPUS_INSIGHTS_API_KEY` in the required `x-signature` header; no unconfirmed HMAC/hash algorithm is invented.
+- Partner response and stored log: pending a successful Team 24 webhook response. `PARTNER_WEBHOOK_URL` is a production secret; the shared key is already held in `CAMPUS_INSIGHTS_API_KEY`. Every configured send records timestamp, payload, HTTP status/body or controlled failure in `integration_events`.
+
+At `2026-09-22T11:26:02Z`, a production booking test with event ID `slot-booked-8591cc22-af9b-4731-8a13-ace4140ba9d7` returned controlled HTTP `502` before Team 24 returned a response. The corresponding `integration_events` row has source `advising-platform-sender` and status `failed`. This is real sender/degradation evidence; it is not a successful partner receipt.
 
 ## 5. Idempotency Proof
 
@@ -62,7 +64,7 @@ For an unavailable Campus Insights API, consumer endpoints return controlled JSO
 }
 ```
 
-For a missing target URL or `x-signature`, the sender returns a controlled `503`; for a failed configured send, it records a `failed` integration event and returns `502` with `fallback: true`. Recovery is **manual retry after the partner recovers**; no automatic retry is claimed. Real breakage timestamp, response, and recovery evidence are pending a production test against a configured Team 24 endpoint.
+For a missing target URL or shared API key, the sender returns a controlled `503`; for a failed configured send, it records a `failed` integration event and returns `502` with `fallback: true`. Recovery is **manual retry after the partner recovers**; no automatic retry is claimed. Real breakage timestamp, response, and recovery evidence are pending a production test against a configured Team 24 endpoint.
 
 At `2026-09-22T10:25:04Z`, the configured lecturer consumer received the partner HTTP `404` above and returned controlled HTTP `502`. At the same time, `GET /api/campus-insights/availability/prof_101?date=2026-09-25` returned controlled HTTP `503` because no availability URL is configured. Both results confirm graceful degradation; neither represents automatic recovery.
 

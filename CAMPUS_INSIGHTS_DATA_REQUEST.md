@@ -21,9 +21,9 @@ Advising Platform sends the agreed booking event through `POST /api/webhooks/sen
 | Secret | Purpose |
 | --- | --- |
 | `PARTNER_WEBHOOK_URL` | The complete Team 24 receiver URL above. |
-| `PARTNER_WEBHOOK_SIGNATURE` | Exact value required by Team 24 in the `x-signature` header. |
+| `CAMPUS_INSIGHTS_API_KEY` | The Team 24 shared key. It is sent as `x-api-key` to lecturer lookup and as `x-signature` to their booking webhook, as Team 24 confirmed. |
 
-The supplied Team 24 material names the required outbound header `x-signature`, but does not document its generation algorithm. Advising Platform therefore sends the configured value exactly and does not guess an HMAC/hash algorithm. Team 24 should confirm whether it is static, an HMAC of the raw body, or another scheme before it is rotated.
+Team 24 confirmed that one shared key is used for all calls. Advising Platform therefore sends `CAMPUS_INSIGHTS_API_KEY` exactly in the `x-signature` header for booking events; it does not invent an HMAC/hash algorithm for that endpoint.
 
 The outgoing payload is:
 
@@ -60,7 +60,6 @@ Use Wrangler secrets in production, never committed files:
 ```sh
 wrangler secret put CAMPUS_INSIGHTS_API_KEY
 wrangler secret put PARTNER_WEBHOOK_URL
-wrangler secret put PARTNER_WEBHOOK_SIGNATURE
 wrangler secret put WEBHOOK_SECRET
 ```
 

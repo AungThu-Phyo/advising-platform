@@ -4,8 +4,6 @@ import { createWebhookSignature, verifyWebhookSignature } from "./utils/signatur
 
 type Bindings = CloudflareBindings & CampusInsightsConfig & {
   WEBHOOK_SECRET?: string;
-  PARTNER_WEBHOOK_SECRET?: string;
-  PARTNER_WEBHOOK_SIGNATURE?: string;
   PARTNER_WEBHOOK_URL?: string;
 };
 type IncomingWebhookPayload = { eventId?: string; eventType?: string; id?: string; type?: string; [key: string]: unknown };
@@ -81,8 +79,9 @@ app.post("/api/integration/provider-test", async (c) => receiveWebhook(c, "provi
 
 app.post("/api/webhooks/send-test", async (c) => {
   const partnerUrl = c.env.PARTNER_WEBHOOK_URL;
-  const partnerSignature = c.env.PARTNER_WEBHOOK_SIGNATURE;
-  if (!partnerUrl || !partnerSignature) return c.json({ success: false, source: "campus-insights", fallback: true, error: !partnerUrl ? "Partner webhook URL is not configured" : "Partner webhook signature is not configured" }, 503);
+  // Team 24 confirmed that this one shared key is used for both their API and webhook calls.
+  const partnerSignature = c.env.CAMPUS_INSIGHTS_API_KEY;
+  if (!partnerUrl || !partnerSignature) return c.json({ success: false, source: "campus-insights", fallback: true, error: !partnerUrl ? "Partner webhook URL is not configured" : "Campus Insights API key is not configured" }, 503);
   const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
   const input = parsed.body as { studentId?: string; lecturerEmail?: string; bookedSlot?: { date?: string; time?: string } };
   const studentId = input.studentId; const lecturerEmail = input.lecturerEmail; const date = input.bookedSlot?.date; const time = input.bookedSlot?.time;
