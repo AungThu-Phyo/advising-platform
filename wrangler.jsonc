@@ -19,7 +19,8 @@
 		{
 			"binding": "advising_db",
 			"database_name": "advising-db",
-			"database_id": "6c6cd605-0fbb-4a2a-a594-cdd6e75ee775"
+			"database_id": "d845c1c1-dc95-45a8-9262-db3646813aa9",
+			"remote": true
 		}
 	]
 	/**
