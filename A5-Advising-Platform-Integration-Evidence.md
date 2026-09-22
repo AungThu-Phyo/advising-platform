@@ -62,7 +62,9 @@ Existing D1 historical test record:
 | --- | --- | --- | --- | --- |
 | `a5-production-webhook-001` | `test.event` | `external-partner` | `processed` | `2026-09-21 17:59:46` |
 
-**Partner confirmation:** pending an authenticated request from Campus Insights. This is not claimed as Campus Insights confirmation.
+**Partner confirmation:** Campus Insights' webhook test bench shows it dispatched a signed request to Advising Platform and received HTTP `200`. The response shown is `success: true`, `duplicate: false`, `signatureVerified: true`, with message `Webhook accepted`. This is partner-side confirmation that our published webhook receiver is reachable and authenticated.
+
+![Campus Insights partner-side confirmation of Advising Platform webhook](screenshots/a5-campus-insights-webhook-success.jpeg)
 
 ## 3. Webhook Receiver
 
@@ -89,7 +91,9 @@ X-Webhook-Signature: <HMAC-SHA256 hex of exact raw body using WEBHOOK_SECRET>
 
 **Verification behavior:** a valid signature is checked before parsing/trusting JSON and produces `signatureVerified: true`. Missing or invalid signatures return HTTP `401`. Verified events are stored in `integration_events` with their event ID, type, source, status, raw payload, and response metadata. No secret is stored.
 
-**Real partner incoming delivery:** pending because Campus Insights has not supplied an inbound webhook signing implementation. The receiver is deployed and protected; it is deliberately not weakened for testing.
+**Real partner incoming delivery:** confirmed by the Campus Insights webhook test bench screenshot. It displays a sent `X-Webhook-Signature`, HTTP `200`, and our response with `signatureVerified: true`, `duplicate: false`, and a generated event ID. The signing secret itself is not included in this report.
+
+![Webhook receiver — signed Campus Insights delivery accepted](screenshots/a5-campus-insights-webhook-success.jpeg)
 
 ## 4. Webhook Sender
 
@@ -112,7 +116,7 @@ X-Webhook-Signature: <HMAC-SHA256 hex of exact raw body using WEBHOOK_SECRET>
 
 **Outgoing request:** Advising Platform adds a generated `eventId`, `eventType: "slot_booked"`, and ISO-8601 `serverTimestamp`; it sends Team 24's one agreed shared key in the required `x-signature` header. The key is stored as `CAMPUS_INSIGHTS_API_KEY` and is not exposed in this report.
 
-**Observed sender result:**
+**Observed sender failure / fallback result:**
 
 | Item | Evidence |
 | --- | --- |
@@ -124,6 +128,10 @@ X-Webhook-Signature: <HMAC-SHA256 hex of exact raw body using WEBHOOK_SECRET>
 Another production sender attempt at `2026-09-22T11:26:02Z` recorded event ID `slot-booked-8591cc22-af9b-4731-8a13-ace4140ba9d7` in D1 with source `advising-platform-sender` and status `failed`. The partner did not return a usable response before the Worker timeout. This proves the trigger, outgoing-event creation, and failure logging—not a successful partner receipt.
 
 **Screenshot evidence to submit:** the Postman response showing the generated event ID and HTTP `502`.
+
+**Partner-side sender confirmation:** Campus Insights' Firestore `webhook_logs` screenshot shows a record with source `AdvisingPlatform`, type `slot_booked`, status `SUCCESS`, lecturer email `john.doe@mfu.ac.th`, booked date `2026-09-25`, time slot `10:00-11:00`, and a recorded processing time. This confirms Campus Insights successfully stored an Advising Platform booking event. The Firestore record uses Campus Insights' internal field names (`bookedDate` and `timeSlot`); it is evidence of their stored representation, not a claim that our outgoing JSON uses those names.
+
+![Campus Insights Firestore confirmation of stored Advising Platform booking event](screenshots/a5-campus-insights-firestore-confirmation.jpeg)
 
 ## 5. Idempotency Proof
 
@@ -146,7 +154,7 @@ Use the identical signed payload twice:
 | Request 1 | `duplicate: false` | One row is inserted for `evt-idempotency-001`. |
 | Request 2 (same raw payload and signature) | `duplicate: true` | Still exactly one row because `event_id` is unique. |
 
-Local automated test passed this exact flow: first signed delivery inserted one event, second signed delivery returned `duplicate: true`, and the test database contained one event. A real partner-signed production duplicate is pending Team 24's inbound webhook support.
+Local automated test passed this exact flow: first signed delivery inserted one event, second signed delivery returned `duplicate: true`, and the test database contained one event. Campus Insights has now completed one real signed production delivery; a second delivery with the same event ID is still needed for partner-side production duplicate evidence.
 
 ## 6. Degradation Proof
 
@@ -178,7 +186,7 @@ Local automated test passed this exact flow: first signed delivery inserted one 
 - `wrangler deploy --dry-run`: passed.
 - Production health endpoint: HTTP `200`.
 - Production lecturer consumer endpoint: HTTP `200` with real Campus Insights data.
-- Production webhook sender: controlled HTTP `502` and D1 failure log when Team 24's webhook did not provide a usable response.
+- Production webhook sender: one controlled HTTP `502` fallback and D1 failure log were observed during a prior attempt; Campus Insights subsequently supplied Firestore evidence that it successfully stored an Advising Platform `slot_booked` event.
 
 ## Screenshot Files for Submission
 
@@ -190,6 +198,8 @@ The following actual screenshots should be attached with this Markdown file. The
 | `screenshots/a5-health.png` | Browser request to the deployed health endpoint returned `status: ok`. |
 | `screenshots/a5-webhook-sender-fallback.png` | Postman sender test returned a generated event ID and controlled `502` fallback when the partner webhook did not return a usable response. |
 | `screenshots/a5-integration-events.png` | Remote D1 query showing stored `integration_events` records, including sender failures. |
+| `screenshots/a5-campus-insights-webhook-success.jpeg` | Campus Insights test bench shows a signed POST to our receiver returned HTTP `200`, `signatureVerified: true`, and `duplicate: false`. |
+| `screenshots/a5-campus-insights-firestore-confirmation.jpeg` | Campus Insights Firestore log shows a successful `slot_booked` record with source `AdvisingPlatform`. |
 
 Health endpoint screenshot:
 
