@@ -31,6 +31,7 @@ async function request(path, init = {}, env = {}) {
 }
 
 assert.equal((await request("/api/health")).status, 200);
+assert.equal((await request("/api/webhooks/partner")).status, 200);
 assert.equal((await request("/api/campus-insights/availability/prof_101?date=2026-09-25")).status, 503);
 assert.equal((await request("/api/campus-insights/lecturers/not-an-email")).status, 400);
 assert.equal((await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 503);

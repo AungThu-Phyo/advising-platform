@@ -74,11 +74,20 @@ async function receiveWebhook(c: any, source: string) {
   catch (error) { if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) return c.json({ success: true, duplicate: true, eventId, message: "Webhook event already processed" }); throw error; }
   return c.json({ success: true, duplicate: false, signatureVerified: true, eventId, message: "Webhook accepted" });
 }
+// A browser uses GET. Keep the webhook endpoint discoverable without accepting
+// unauthenticated events; only POST below processes webhook deliveries.
+app.get("/api/webhooks/partner", (c) => c.json({
+  status: "active",
+  message: "Webhook receiver is active. Send an authenticated POST request to this URL.",
+  method: "POST",
+  signatureHeader: INBOUND_SIGNATURE_HEADER,
+}, 200));
 app.post("/api/webhooks/partner", async (c) => receiveWebhook(c, "campus-insights"));
 app.post("/api/integration/provider-test", async (c) => receiveWebhook(c, "provider-test"));
 
 app.post("/api/webhooks/send-test", async (c) => {
   const partnerUrl = c.env.PARTNER_WEBHOOK_URL;
+
   // Team 24 confirmed that this one shared key is used for both their API and webhook calls.
   const partnerSignature = c.env.CAMPUS_INSIGHTS_API_KEY;
   if (!partnerUrl || !partnerSignature) return c.json({ success: false, source: "campus-insights", fallback: true, error: !partnerUrl ? "Partner webhook URL is not configured" : "Campus Insights API key is not configured" }, 503);
