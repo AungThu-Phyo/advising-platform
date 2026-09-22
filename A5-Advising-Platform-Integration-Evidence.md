@@ -202,3 +202,49 @@ The following actual screenshots should be attached with this Markdown file. The
 | `screenshots/a5-campus-insights-firestore-confirmation.jpeg` | Campus Insights Firestore log shows a successful `slot_booked` record with source `AdvisingPlatform`. |
 | `screenshots/a5-consumer-success.png` | Browser request to the deployed lecturer consumer endpoint returned `success: true`, partner status `200`, and real Campus Insights lecturer data. |
 | `screenshots/a5-webhook-sender-fallback.png` | Postman request to the sender endpoint returned a generated event ID and controlled HTTP `502` fallback. |
+
+## Screenshot Capture Commands
+
+Run these commands from the repository root. Save each response screenshot using the filename shown below; the links above will then render in VS Code Markdown Preview.
+
+### 1. Consumer proof
+
+```sh
+curl -i "https://advising-platform.aron078.workers.dev/api/campus-insights/lecturers/john.doe%40mfu.ac.th"
+```
+
+Capture the successful response and save it as `screenshots/a5-consumer-success.png`.
+
+### 2. Provider and receiver proof
+
+Ask Campus Insights Team 24 to send their signed test webhook to:
+
+```text
+POST https://advising-platform.aron078.workers.dev/api/webhooks/partner
+```
+
+Capture both the partner test result and the response showing HTTP `200`, then save it as `screenshots/a5-campus-insights-webhook-success.jpeg`.
+
+### 3. Webhook sender and degradation proof
+
+```sh
+curl -i -X POST "https://advising-platform.aron078.workers.dev/api/webhooks/send-test" \
+  -H "Content-Type: application/json" \
+  --data '{"studentId":"student-001","lecturerEmail":"john.doe@mfu.ac.th","bookedSlot":{"date":"2026-09-25","time":"10:00-11:00"}}'
+```
+
+Capture the JSON response, including the generated event ID and either the partner response or controlled fallback, as `screenshots/a5-webhook-sender-fallback.png`.
+
+### 4. Partner-side booking confirmation
+
+After a successful sender request, open the Campus Insights `webhook_logs` record for that event and capture the successful `slot_booked` record. Save it as `screenshots/a5-campus-insights-firestore-confirmation.jpeg`.
+
+### 5. Verify local evidence before submission
+
+```sh
+npm run typecheck
+npm test
+git diff --check
+```
+
+Open this file in VS Code and run **Markdown: Open Preview**. All four screenshot files must appear before submitting the Markdown file.
