@@ -9,7 +9,7 @@
     "test": "node test/a5-local-check.mjs"
   },
   "dependencies": {
-    "hono": "^4.13.3"
+    "hono": "^4.13.16"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

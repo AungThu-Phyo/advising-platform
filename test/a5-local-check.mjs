@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { buildSync } from "esbuild";
-import { mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
-mkdirSync("/private/tmp/advising-platform-test", { recursive: true });
-buildSync({ entryPoints: ["src/index.ts"], bundle: true, platform: "node", format: "esm", outfile: "/private/tmp/advising-platform-test/worker.mjs" });
-const { default: app } = await import("file:///private/tmp/advising-platform-test/worker.mjs");
+const tempDir = mkdtempSync(join(tmpdir(), "advising-platform-test-"));
+process.on("exit", () => rmSync(tempDir, { recursive: true, force: true }));
+const workerPath = join(tempDir, "worker.mjs");
+buildSync({ entryPoints: ["src/index.ts"], bundle: true, platform: "node", format: "esm", outfile: workerPath });
+const { default: app } = await import(pathToFileURL(workerPath).href);
 
 const events = [];
 const db = {
