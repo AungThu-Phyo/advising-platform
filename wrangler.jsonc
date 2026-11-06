@@ -5,12 +5,9 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "advising-platform",
+	"account_id": "f48a3c4f6947d74914ca714f415ab96f",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-08-20",
-	"assets": {
-		"binding": "ASSETS",
-		"directory": "./public"
-	},
 	"observability": {
 		"enabled": true
 	},
