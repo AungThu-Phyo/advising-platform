@@ -52,6 +52,54 @@ assert.equal(events.length, 1);
 assert.equal((await request("/api/webhooks/partner", { method: "POST", body, headers: { "X-Webhook-Signature": "invalid" } }, webhookEnv)).status, 401);
 
 const originalFetch = globalThis.fetch;
+
+// Campus Insights lecturer integration tests
+const lecturerPath = "/api/campus-insights/lecturers/john.doe%40mfu.ac.th";
+const lecturerEnv = { CAMPUS_INSIGHTS_API_KEY: "test-campus-key" };
+
+// Missing API key
+assert.equal((await request(lecturerPath)).status, 503);
+
+// Successful lecturer lookup
+globalThis.fetch = async (url, init) => {
+  const parsedUrl = new URL(String(url));
+  assert.equal(parsedUrl.searchParams.get("email"), "john.doe@mfu.ac.th");
+  assert.equal(new Headers(init.headers).get("x-api-key"), "test-campus-key");
+  return new Response('{"id":"prof_101"}', { status: 200 });
+};
+
+const lecturerSuccess = await request(lecturerPath, {}, lecturerEnv);
+assert.equal(lecturerSuccess.status, 200);
+assert.equal((await lecturerSuccess.json()).success, true);
+
+// Partner rate limiting
+globalThis.fetch = async () =>
+  new Response("Too Many Requests", {
+    status: 429,
+    headers: { "Retry-After": "30" },
+  });
+
+const lecturerRateLimited = await request(lecturerPath, {}, lecturerEnv);
+assert.equal(lecturerRateLimited.status, 429);
+assert.equal((await lecturerRateLimited.json()).partnerStatus, 429);
+
+// Partner server error
+globalThis.fetch = async () => new Response("Internal Server Error", { status: 500 });
+
+const lecturerServerError = await request(lecturerPath, {}, lecturerEnv);
+assert.equal(lecturerServerError.status, 502);
+
+// Partner timeout
+globalThis.fetch = async () => {
+  throw Object.assign(new Error("Request timed out"), { name: "TimeoutError" });
+};
+
+const lecturerTimeout = await request(lecturerPath, {}, lecturerEnv);
+assert.equal(lecturerTimeout.status, 504);
+
+globalThis.fetch = originalFetch;
+
+console.log("Campus Insights lecturer tests passed.");
 globalThis.fetch = async () => new Response('{"status":"Webhook received and logged successfully"}', { status: 200 });
 const sender = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, { CAMPUS_INSIGHTS_API_KEY: "test-key", PARTNER_WEBHOOK_URL: "https://example.invalid/webhook" });
 assert.equal(sender.status, 200);

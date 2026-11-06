@@ -52,7 +52,7 @@ export class CampusInsightsClient {
       const text = await response.text();
       let partnerResponse: unknown = text;
       try { partnerResponse = JSON.parse(text); } catch { /* Preserve a non-JSON response. */ }
-      if (!response.ok) return { status: 502, body: { success: false, source: "campus-insights", fallback: true, error: "Campus Insights returned a non-success response", partnerStatus: response.status, partnerResponse } };
+      if (!response.ok) return { status: response.status === 429 ? 429 : 502, body: { success: false, source: "campus-insights", fallback: true, error: response.status === 429 ? "Campus Insights rate limit exceeded" : "Campus Insights returned a non-success response", partnerStatus: response.status, partnerResponse } };
       return { status: 200, body: { success: true, source: "campus-insights", partnerStatus: response.status, data: partnerResponse } };
     } catch (error) {
       const timedOut = error instanceof Error && error.name === "TimeoutError";
