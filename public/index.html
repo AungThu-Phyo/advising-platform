@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advising Platform</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">Classroom demo</p>
+      <h1>Advising Platform</h1>
+      <p class="intro">Submit an advising request and view requests for the selected mock student.</p>
+      <p class="notice">Demo mode: the student selector is not authentication.</p>
+    </header>
+
+    <section class="card">
+      <label for="student">Acting as</label>
+      <select id="student">
+        <option value="MFU650100001">Alex Johnson — MFU650100001</option>
+        <option value="MFU650100002">Maya Chen — MFU650100002</option>
+        <option value="MFU650100003">Daniel Smith — MFU650100003</option>
+      </select>
+    </section>
+
+    <div id="message" role="status" aria-live="polite"></div>
+
+    <section class="grid">
+      <form id="request-form" class="card">
+        <h2>Request advising</h2>
+        <label for="agenda">Agenda</label>
+        <textarea id="agenda" required placeholder="What would you like to discuss?"></textarea>
+        <label for="date">Preferred date</label>
+        <input id="date" type="date" required>
+        <label for="time">Preferred time</label>
+        <input id="time" type="text" required placeholder="10:00-11:00">
+        <button type="submit">Submit request</button>
+      </form>
+
+      <section class="card">
+        <div class="section-heading">
+          <h2>My requests</h2>
+          <button id="refresh" class="secondary" type="button">Refresh</button>
+        </div>
+        <div id="requests" class="requests" aria-live="polite"></div>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
