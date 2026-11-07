@@ -12,16 +12,30 @@ buildSync({ entryPoints: ["src/index.ts"], bundle: true, platform: "node", forma
 const { default: app } = await import(pathToFileURL(workerPath).href);
 
 const events = [];
+const advisingRequests = [
+  { id: 2, student_id: "MFU650100002", agenda: "Machine learning", preferred_date: "2026-11-11", preferred_time: "11:00-12:00", status: "pending" },
+  { id: 1, student_id: "MFU650100001", agenda: "Database design", preferred_date: "2026-11-10", preferred_time: "10:00-11:00", status: "pending" },
+];
 const db = {
-  prepare() {
+  prepare(query) {
     return {
-      bind(eventId, eventType, source, status, payload, response) {
+      bind(...values) {
         return {
           async run() {
+            const [eventId, eventType, source, status, payload, response] = values;
             if (events.some((event) => event.eventId === eventId)) throw new Error("UNIQUE constraint failed: integration_events.event_id");
             events.push({ eventId, eventType, source, status, payload, response });
           },
+          async first() {
+            return advisingRequests.find((request) => request.id === Number(values[0])) ?? null;
+          },
+          async all() {
+            return { results: advisingRequests.filter((request) => !query.includes("WHERE student_id") || request.student_id === values[0]) };
+          },
         };
+      },
+      async all() {
+        return { results: advisingRequests };
       },
     };
   },
@@ -36,6 +50,12 @@ async function request(path, init = {}, env = {}) {
 }
 
 assert.equal((await request("/api/health")).status, 200);
+const alexRequests = await request("/api/advising-requests?student_id=MFU650100001");
+assert.equal(alexRequests.status, 200);
+assert.deepEqual((await alexRequests.json()).map((item) => item.student_id), ["MFU650100001"]);
+const mayaRequests = await request("/api/advising-requests?student_id=MFU650100002");
+assert.deepEqual((await mayaRequests.json()).map((item) => item.student_id), ["MFU650100002"]);
+assert.equal((await request("/api/advising-requests?student_id=%20")).status, 400);
 assert.equal((await request("/api/webhooks/partner")).status, 200);
 assert.equal((await request("/api/campus-insights/availability/prof_101?date=2026-09-25")).status, 503);
 assert.equal((await request("/api/campus-insights/lecturers/not-an-email")).status, 400);
