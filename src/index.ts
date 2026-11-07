@@ -25,13 +25,16 @@ async function parseJsonBody(c: any): Promise<{ body?: Record<string, unknown>; 
   catch { return { error: c.json({ success: false, error: "Invalid JSON payload" }, 400) }; }
 }
 
-app.get("/", (c) => c.json({ message: "Advising Platform — Campus Insights integration", endpoints: [
-  "GET /api/health", "GET /api/campus-insights/lecturers/:email",
-  "GET /api/campus-insights/availability/:lecturerId?date=YYYY-MM-DD",
-  "GET /api/campus-insights/ratings/:lecturerId", "GET /api/campus-insights/topics?period=YYYY-MM",
-  "GET /api/campus-insights/booking-stats?period=YYYY-MM", "POST /api/webhooks/partner",
-  "POST /api/webhooks/send-test", "POST /api/integration/provider-test",
-] }));
+app.get("/", async (c) => {
+  if (c.env.ASSETS && typeof c.env.ASSETS.fetch === "function") return c.env.ASSETS.fetch(c.req.raw);
+  return c.json({ message: "Advising Platform — Campus Insights integration", endpoints: [
+    "GET /api/health", "GET /api/campus-insights/lecturers/:email",
+    "GET /api/campus-insights/availability/:lecturerId?date=YYYY-MM-DD",
+    "GET /api/campus-insights/ratings/:lecturerId", "GET /api/campus-insights/topics?period=YYYY-MM",
+    "GET /api/campus-insights/booking-stats?period=YYYY-MM", "POST /api/webhooks/partner",
+    "POST /api/webhooks/send-test", "POST /api/integration/provider-test",
+  ] });
+});
 app.get("/api/health", (c) => c.json({ status: "ok", service: "advising-platform-api" }));
 
 // Existing Advising Request CRUD API
@@ -42,7 +45,15 @@ app.post("/api/advising-requests", async (c) => {
   const result = await c.env.advising_db.prepare(`INSERT INTO advising_requests (student_id, agenda, preferred_date, preferred_time) VALUES (?, ?, ?, ?) RETURNING *`).bind(body.student_id, body.agenda, body.preferred_date, body.preferred_time).first();
   return c.json(result, 201);
 });
-app.get("/api/advising-requests", async (c) => c.json((await c.env.advising_db.prepare("SELECT * FROM advising_requests ORDER BY id DESC").all()).results));
+app.get("/api/advising-requests", async (c) => {
+  const studentId = c.req.query("student_id");
+  if (studentId !== undefined && !isNonEmptyString(studentId)) return c.json({ error: "student_id cannot be empty" }, 400);
+  const query = studentId
+    ? "SELECT * FROM advising_requests WHERE student_id = ? ORDER BY id DESC"
+    : "SELECT * FROM advising_requests ORDER BY id DESC";
+  const statement = studentId ? c.env.advising_db.prepare(query).bind(studentId) : c.env.advising_db.prepare(query);
+  return c.json((await statement.all()).results);
+});
 app.get("/api/advising-requests/:id", async (c) => { const result = await c.env.advising_db.prepare("SELECT * FROM advising_requests WHERE id = ?").bind(c.req.param("id")).first(); return result ? c.json(result) : c.json({ error: "Advising request not found" }, 404); });
 app.patch("/api/advising-requests/:id", async (c) => {
   const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
@@ -106,6 +117,11 @@ app.post("/api/webhooks/send-test", async (c) => {
     await logIntegrationEvent(c.env.advising_db, payload.eventId, payload.eventType, "advising-platform-sender", "failed", body, JSON.stringify({ requestedAt, error: reason }));
     return c.json({ success: false, eventId: payload.eventId, requestedAt, source: "campus-insights", fallback: true, error: reason, recovery: "Retry manually after the partner has recovered." }, 502);
   }
+});
+
+app.all("*", async (c) => {
+  if (c.env.ASSETS && typeof c.env.ASSETS.fetch === "function") return c.env.ASSETS.fetch(c.req.raw);
+  return c.notFound();
 });
 
 export default app;
