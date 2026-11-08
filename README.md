@@ -45,9 +45,17 @@ Apply migration `0004_add_advisor_assignments.sql` before using this flow.
 registrations during local development; production assignments should be
 written to `users.advisor_email` by an admin workflow.
 
+Advisor accounts (`role = 'ADVISOR'`) see requests assigned to their email and
+can approve or reject pending requests with a decision note from the advisor
+view. Apply migration `0005_add_decision_notes.sql` before using decisions.
+
 wrangler command :
 
+to assign an advisor to a student-
 npx wrangler d1 execute advising-db --remote --command "UPDATE users SET advisor_email = 'john.doe@mfu.ac.th' WHERE email = 'student@example.com';"
+
+to promote a user account to ADVISOR role-
+npx wrangler d1 execute advising-db --remote --command "UPDATE users SET role = 'ADVISOR' WHERE email = 'advisor@example.com';"
 
 [For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
 
