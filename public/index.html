@@ -62,7 +62,7 @@
         <div id="advisor" class="empty">Loading advisor information...</div>
       </section>
       <section class="grid">
-      <form id="request-form" class="card">
+        <form id="request-form" class="card">
         <h2>Request advising</h2>
         <label for="agenda">Agenda</label>
         <textarea id="agenda" required placeholder="What would you like to discuss?"></textarea>
@@ -74,29 +74,30 @@
         </select>
         <p id="availability-message" class="empty">Choose a date to load available slots.</p>
         <button type="submit">Submit request</button>
-      </form>
+        </form>
 
-      <section class="card">
+        <section class="card">
         <div class="section-heading">
           <h2>My requests</h2>
           <button id="refresh" class="secondary" type="button">Refresh</button>
         </div>
         <div id="requests" class="requests" aria-live="polite"></div>
-      </section>
-        <section id="advisor-panel" class="card hidden">
-          <div class="section-heading">
-            <h2>Advisor requests</h2>
-            <button id="advisor-refresh" class="secondary" type="button">Refresh</button>
-          </div>
-          <label for="status-filter">Filter by status</label>
-          <select id="status-filter">
-            <option value="">All requests</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          <div id="advisor-requests" class="requests" aria-live="polite"></div>
         </section>
+      </section>
+      <section id="advisor-panel" class="card hidden">
+        <div id="advisor-notification" class="notification hidden" role="status" aria-live="polite"></div>
+        <div class="section-heading">
+          <h2>Advisor requests</h2>
+          <button id="advisor-refresh" class="secondary" type="button">Refresh</button>
+        </div>
+        <label for="status-filter">Filter by status</label>
+        <select id="status-filter">
+          <option value="">All requests</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <div id="advisor-requests" class="requests" aria-live="polite"></div>
       </section>
     </section>
   </main>
