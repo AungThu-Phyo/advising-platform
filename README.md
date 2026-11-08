@@ -28,6 +28,12 @@ New registrations are `STUDENT` accounts. `ADVISOR` and `ADMIN` roles should be
 assigned through a controlled database/admin workflow; they cannot be requested
 by a public registration.
 
+The Worker serves the authenticated student frontend at `http://localhost:8787/`.
+Register or sign in, submit an advising request, and the “My requests” panel
+loads only the authenticated student's requests through
+`GET /api/advising-requests`. The browser handles the HttpOnly session cookie
+automatically.
+
 [For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
 
 ```txt
