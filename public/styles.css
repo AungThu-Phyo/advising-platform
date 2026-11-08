@@ -15,6 +15,8 @@ h2 { margin-top: 0; }
 .card { background: white; border: 1px solid #dfe5ef; border-radius: 14px; padding: 22px; box-shadow: 0 8px 24px #1720330b; }
 .user-bar { align-items: center; display: flex; justify-content: space-between; margin-top: 20px; }
 .user-bar small { color: #667085; display: block; margin-top: 4px; }
+.advisor-card { margin-top: 20px; }
+.advisor-card span { color: #667085; display: block; margin-top: 6px; }
 .hidden { display: none !important; }
 label { display: block; font-weight: 650; margin: 14px 0 6px; }
 select, textarea, input { border: 1px solid #cbd4e2; border-radius: 8px; font: inherit; padding: 10px; width: 100%; }

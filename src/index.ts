@@ -5,8 +5,9 @@ import { createWebhookSignature, verifyWebhookSignature } from "./utils/signatur
 type Bindings = CloudflareBindings & CampusInsightsConfig & {
   WEBHOOK_SECRET?: string;
   PARTNER_WEBHOOK_URL?: string;
+  DEFAULT_ADVISOR_EMAIL?: string;
 };
-type AuthUser = { id: string; email: string; name: string; role: "STUDENT" | "ADVISOR" | "ADMIN" };
+type AuthUser = { id: string; email: string; name: string; role: "STUDENT" | "ADVISOR" | "ADMIN"; advisor_email?: string | null };
 type StoredUser = AuthUser & { password_hash: string; password_salt: string; password_iterations: number };
 type IncomingWebhookPayload = { eventId?: string; eventType?: string; id?: string; type?: string; [key: string]: unknown };
 type SlotBookedPayload = { eventId: string; eventType: "slot_booked"; studentId: string; bookedSlot: { date: string; time: string }; lecturerEmail: string; serverTimestamp: string };
@@ -19,6 +20,11 @@ const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 const SESSION_COOKIE = "advising_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const PASSWORD_ITERATIONS = 100_000;
+const DEMO_AVAILABILITY = [
+  { date: "2026-11-10", time: "09:00-10:00" },
+  { date: "2026-11-10", time: "10:00-11:00" },
+  { date: "2026-11-12", time: "13:00-14:00" },
+];
 
 function encodeBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -70,7 +76,7 @@ async function currentUser(c: { req: { raw: Request }; env: Bindings }): Promise
   const token = readCookie(c.req.raw, SESSION_COOKIE);
   if (!token) return null;
   const row = await c.env.advising_db.prepare(
-    `SELECT users.id, users.email, users.name, users.role
+    `SELECT users.id, users.email, users.name, users.role, users.advisor_email
      FROM sessions JOIN users ON users.id = sessions.user_id
      WHERE sessions.token_hash = ? AND sessions.expires_at > CURRENT_TIMESTAMP`,
   ).bind(await digest(token)).first<AuthUser>();
@@ -118,12 +124,12 @@ app.post("/api/auth/register", async (c) => {
     return c.json({ error: "A valid email, name, and password of at least 8 characters are required" }, 400);
   }
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const user: AuthUser = { id: crypto.randomUUID(), email, name, role: "STUDENT" };
+  const user: AuthUser = { id: crypto.randomUUID(), email, name, role: "STUDENT", advisor_email: c.env.DEFAULT_ADVISOR_EMAIL ?? null };
   try {
     await c.env.advising_db.prepare(
-      `INSERT INTO users (id, email, name, role, password_hash, password_salt, password_iterations)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(user.id, user.email, user.name, user.role, await hashPassword(password, salt), encodeBase64Url(salt), PASSWORD_ITERATIONS).run();
+      `INSERT INTO users (id, email, name, role, advisor_email, password_hash, password_salt, password_iterations)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(user.id, user.email, user.name, user.role, user.advisor_email, await hashPassword(password, salt), encodeBase64Url(salt), PASSWORD_ITERATIONS).run();
   } catch (error) {
     if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) return c.json({ error: "An account with this email already exists" }, 409);
     throw error;
@@ -156,6 +162,36 @@ app.post("/api/auth/logout", async (c) => {
   return new Response(null, { status: 204, headers: { "Set-Cookie": sessionCookie("", 0) } });
 });
 
+app.get("/api/student/advisor", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
+  if (user.role !== "STUDENT") return c.json({ error: "This endpoint is for students" }, 403);
+  if (!user.advisor_email) return c.json({ error: "No advisor is assigned to this student" }, 503);
+  return c.json({ advisorEmail: user.advisor_email, profile: (await client(c).getLecturerByEmail(user.advisor_email)).body });
+});
+
+app.get("/api/student/advisor/availability", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
+  if (user.role !== "STUDENT") return c.json({ error: "This endpoint is for students" }, 403);
+  if (!user.advisor_email) return c.json({ error: "No advisor is assigned to this student" }, 503);
+  const date = c.req.query("date");
+  if (!isNonEmptyString(date)) return c.json({ error: "date query parameter is required" }, 400);
+  const advisor = await client(c).getLecturerByEmail(user.advisor_email);
+  const partnerId = (advisor.body.data as { data?: { id?: string }; id?: string } | undefined)?.data?.id
+    ?? (advisor.body.data as { id?: string } | undefined)?.id;
+  const configured = c.env.CAMPUS_INSIGHTS_AVAILABILITY_URL && partnerId
+    ? await client(c).getConfigured("availability", { lecturerId: partnerId, date })
+    : null;
+  if (configured?.status === 200) return c.json({ ...configured.body, fallback: false });
+  return c.json({
+    success: true,
+    source: "local-demo",
+    fallback: true,
+    advisorEmail: user.advisor_email,
+    date,
+    slots: DEMO_AVAILABILITY.filter((slot) => slot.date === date),
+  });
+});
+
 // Advising Request CRUD API. Requests are private to the authenticated student or staff.
 app.post("/api/advising-requests", async (c) => {
   const user = await requireAuth(c); if (user instanceof Response) return user;
@@ -165,7 +201,9 @@ app.post("/api/advising-requests", async (c) => {
   if (user.role === "STUDENT" && body.student_id && body.student_id !== user.id) return c.json({ error: "student_id must match the authenticated user" }, 403);
   const studentId = user.role === "STUDENT" ? user.id : body.student_id;
   if (!isNonEmptyString(studentId)) return c.json({ error: "student_id is required for staff-created requests" }, 400);
-  const result = await c.env.advising_db.prepare(`INSERT INTO advising_requests (student_id, agenda, preferred_date, preferred_time) VALUES (?, ?, ?, ?) RETURNING *`).bind(studentId, body.agenda, body.preferred_date, body.preferred_time).first();
+  const advisorEmail = user.role === "STUDENT" ? user.advisor_email : null;
+  if (user.role === "STUDENT" && !advisorEmail) return c.json({ error: "No advisor is assigned to this student" }, 503);
+  const result = await c.env.advising_db.prepare(`INSERT INTO advising_requests (student_id, advisor_email, agenda, preferred_date, preferred_time) VALUES (?, ?, ?, ?, ?) RETURNING *`).bind(studentId, advisorEmail, body.agenda, body.preferred_date, body.preferred_time).first();
   return c.json(result, 201);
 });
 app.get("/api/advising-requests", async (c) => {
