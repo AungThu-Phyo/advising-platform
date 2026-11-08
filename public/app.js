@@ -17,6 +17,10 @@ const advisor = document.querySelector("#advisor");
 const dateInput = document.querySelector("#date");
 const timeInput = document.querySelector("#time");
 const availabilityMessage = document.querySelector("#availability-message");
+const studentContent = document.querySelector("#app-panel > .grid");
+const advisorPanel = document.querySelector("#advisor-panel");
+const advisorRequests = document.querySelector("#advisor-requests");
+const statusFilter = document.querySelector("#status-filter");
 const form = document.querySelector("#request-form");
 const requests = document.querySelector("#requests");
 const message = document.querySelector("#message");
@@ -64,6 +68,59 @@ async function loadRequests() {
     showMessage(error.message, "error");
   }
 }
+
+function renderAdvisorRequests(items) {
+  const filtered = statusFilter.value ? items.filter((item) => item.status === statusFilter.value) : items;
+  advisorRequests.innerHTML = filtered.length ? filtered.map((item) => `
+    <article class="request">
+      <div class="request-top">
+        <strong>Request #${item.id}</strong>
+        <span class="status">${escapeHtml(item.status)}</span>
+      </div>
+      <p><strong>Student:</strong> ${escapeHtml(item.student_id)}</p>
+      <p>${escapeHtml(item.agenda)}</p>
+      <small>${escapeHtml(item.preferred_date)} · ${escapeHtml(item.preferred_time)}</small>
+      ${item.decision_note ? `<p class="decision-note"><strong>Decision note:</strong> ${escapeHtml(item.decision_note)}</p>` : ""}
+      ${item.status === "pending" ? `<div class="decision-actions">
+        <button type="button" data-decision="approved" data-request-id="${item.id}">Approve</button>
+        <button type="button" class="danger" data-decision="rejected" data-request-id="${item.id}">Reject</button>
+      </div>` : ""}
+    </article>
+  `).join("") : '<p class="empty">No requests match this filter.</p>';
+}
+
+async function loadAdvisorRequests() {
+  advisorRequests.innerHTML = '<p class="empty">Loading requests...</p>';
+  try {
+    const response = await fetch("/api/advising-requests");
+    const data = await response.json();
+    if (response.status === 401) return showLoggedOut("Your session has expired. Please sign in again.");
+    if (!response.ok) throw new Error(data.error || "Could not load advisor requests");
+    renderAdvisorRequests(data);
+  } catch (error) {
+    advisorRequests.innerHTML = "";
+    showMessage(error.message, "error");
+  }
+}
+
+advisorRequests.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-decision]");
+  if (!button) return;
+  const note = window.prompt(`Add a note for this ${button.dataset.decision} decision:`);
+  if (!note || !note.trim()) return;
+  const response = await fetch(`/api/advising-requests/${button.dataset.requestId}/decision`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: button.dataset.decision, decision_note: note.trim() })
+  });
+  const data = await response.json();
+  if (!response.ok) return showMessage(data.error || "Could not save decision", "error");
+  showMessage("Decision saved.", "success");
+  loadAdvisorRequests();
+});
+
+statusFilter.addEventListener("change", loadAdvisorRequests);
+document.querySelector("#advisor-refresh").addEventListener("click", loadAdvisorRequests);
 
 async function loadAdvisor() {
   advisor.textContent = "Loading advisor information...";
@@ -142,8 +199,16 @@ function showLoggedIn(user) {
   userName.textContent = user.name;
   userEmail.textContent = user.email;
   showMessage("");
-  loadAdvisor();
-  loadRequests();
+  const isAdvisor = user.role === "ADVISOR" || user.role === "ADMIN";
+  document.querySelector("header .eyebrow").textContent = isAdvisor ? "Advisor portal" : "Student portal";
+  document.querySelector("header .intro").textContent = isAdvisor ? "Review and decide advising requests." : "Submit an advising request and track your requests.";
+  studentContent.classList.toggle("hidden", isAdvisor);
+  advisorPanel.classList.toggle("hidden", !isAdvisor);
+  if (isAdvisor) loadAdvisorRequests();
+  else {
+    loadAdvisor();
+    loadRequests();
+  }
 }
 
 function updateAuthMode() {

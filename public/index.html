@@ -83,6 +83,20 @@
         </div>
         <div id="requests" class="requests" aria-live="polite"></div>
       </section>
+        <section id="advisor-panel" class="card hidden">
+          <div class="section-heading">
+            <h2>Advisor requests</h2>
+            <button id="advisor-refresh" class="secondary" type="button">Refresh</button>
+          </div>
+          <label for="status-filter">Filter by status</label>
+          <select id="status-filter">
+            <option value="">All requests</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <div id="advisor-requests" class="requests" aria-live="polite"></div>
+        </section>
       </section>
     </section>
   </main>

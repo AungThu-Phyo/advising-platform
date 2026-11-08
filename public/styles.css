@@ -36,4 +36,8 @@ button.secondary { background: #e9eefb; color: #314b9e; margin: 0; }
 .request p { margin-bottom: 8px; white-space: pre-wrap; }
 .status { background: #e9eefb; border-radius: 999px; color: #314b9e; font-size: .8rem; padding: 4px 9px; text-transform: capitalize; }
 .empty { color: #667085; }
+.decision-actions { display: flex; gap: 10px; }
+.decision-actions button { margin-top: 10px; }
+.decision-actions .danger { background: #b42318; }
+.decision-note { border-left: 3px solid #4768d8; padding-left: 10px; }
 @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .shell { padding-top: 28px; } }
