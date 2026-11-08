@@ -18,6 +18,7 @@ const dateInput = document.querySelector("#date");
 const timeInput = document.querySelector("#time");
 const availabilityMessage = document.querySelector("#availability-message");
 const studentContent = document.querySelector("#app-panel > .grid");
+const studentAdvisorCard = document.querySelector("#app-panel > .advisor-card");
 const advisorPanel = document.querySelector("#advisor-panel");
 const advisorRequests = document.querySelector("#advisor-requests");
 const statusFilter = document.querySelector("#status-filter");
@@ -80,7 +81,8 @@ function renderAdvisorRequests(items) {
         <strong>Request #${item.id}</strong>
         <span class="status">${escapeHtml(item.status)}</span>
       </div>
-      <p><strong>Student:</strong> ${escapeHtml(item.student_id)}</p>
+      <p><strong>Student:</strong> ${escapeHtml(item.student_name || item.student_email || "Unknown student")}</p>
+      ${item.student_name && item.student_email ? `<small>${escapeHtml(item.student_email)}</small>` : ""}
       <p>${escapeHtml(item.agenda)}</p>
       <small>${escapeHtml(item.preferred_date)} · ${escapeHtml(item.preferred_time)}</small>
       ${item.decision_note ? `<p class="decision-note"><strong>Decision note:</strong> ${escapeHtml(item.decision_note)}</p>` : ""}
@@ -220,6 +222,7 @@ function showLoggedIn(user) {
   document.querySelector("header .eyebrow").textContent = isAdvisor ? "Advisor portal" : "Student portal";
   document.querySelector("header .intro").textContent = isAdvisor ? "Review and decide advising requests." : "Submit an advising request and track your requests.";
   studentContent.classList.toggle("hidden", isAdvisor);
+  studentAdvisorCard.classList.toggle("hidden", isAdvisor);
   advisorPanel.classList.toggle("hidden", !isAdvisor);
   if (isAdvisor) loadAdvisorRequests();
   else {
