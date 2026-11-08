@@ -13,6 +13,10 @@ const passwordInput = document.querySelector("#password");
 const confirmPasswordInput = document.querySelector("#confirm-password");
 const userName = document.querySelector("#user-name");
 const userEmail = document.querySelector("#user-email");
+const advisor = document.querySelector("#advisor");
+const dateInput = document.querySelector("#date");
+const timeInput = document.querySelector("#time");
+const availabilityMessage = document.querySelector("#availability-message");
 const form = document.querySelector("#request-form");
 const requests = document.querySelector("#requests");
 const message = document.querySelector("#message");
@@ -61,7 +65,45 @@ async function loadRequests() {
   }
 }
 
+async function loadAdvisor() {
+  advisor.textContent = "Loading advisor information...";
+  try {
+    const response = await fetch("/api/student/advisor");
+    const data = await response.json();
+    if (response.status === 401) return showLoggedOut("Your session has expired. Please sign in again.");
+    if (!response.ok) throw new Error(data.error || "Could not load advisor information");
+    const profile = data.profile?.data?.data || data.profile?.data || {};
+    advisor.innerHTML = `<strong>${escapeHtml(profile.name || data.advisorEmail)}</strong>
+      <span>${escapeHtml(profile.school || profile.major || data.advisorEmail)}</span>`;
+  } catch (error) {
+    advisor.textContent = error.message;
+    advisor.className = "error";
+  }
+}
+
+async function loadAvailability() {
+  timeInput.disabled = true;
+  timeInput.innerHTML = '<option value="">Loading available slots...</option>';
+  availabilityMessage.textContent = "";
+  try {
+    const response = await fetch(`/api/student/advisor/availability?date=${encodeURIComponent(dateInput.value)}`);
+    const data = await response.json();
+    if (response.status === 401) return showLoggedOut("Your session has expired. Please sign in again.");
+    if (!response.ok) throw new Error(data.error || "Could not load availability");
+    const slots = Array.isArray(data.slots) ? data.slots : Array.isArray(data.data) ? data.data : [];
+    timeInput.innerHTML = slots.length
+      ? '<option value="">Select an available slot</option>' + slots.map((slot) => `<option value="${escapeHtml(slot.time)}">${escapeHtml(slot.time)}</option>`).join("")
+      : '<option value="">No available slots</option>';
+    timeInput.disabled = !slots.length;
+    availabilityMessage.textContent = data.fallback ? "Demo availability is shown because partner availability is not configured." : "Availability supplied by Campus Insights.";
+  } catch (error) {
+    timeInput.innerHTML = '<option value="">Availability unavailable</option>';
+    availabilityMessage.textContent = error.message;
+  }
+}
+
 document.querySelector("#refresh").addEventListener("click", loadRequests);
+dateInput.addEventListener("change", loadAvailability);
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   showMessage("Submitting...");
@@ -100,6 +142,7 @@ function showLoggedIn(user) {
   userName.textContent = user.name;
   userEmail.textContent = user.email;
   showMessage("");
+  loadAdvisor();
   loadRequests();
 }
 
