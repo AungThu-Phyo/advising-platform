@@ -21,11 +21,14 @@ const studentContent = document.querySelector("#app-panel > .grid");
 const advisorPanel = document.querySelector("#advisor-panel");
 const advisorRequests = document.querySelector("#advisor-requests");
 const statusFilter = document.querySelector("#status-filter");
+const advisorNotification = document.querySelector("#advisor-notification");
 const form = document.querySelector("#request-form");
 const requests = document.querySelector("#requests");
 const message = document.querySelector("#message");
 let registerMode = false;
 let currentUser = null;
+let advisorRequestIds = null;
+let advisorPollingTimer = null;
 
 function showMessage(text, kind = "") {
   message.textContent = text;
@@ -89,13 +92,22 @@ function renderAdvisorRequests(items) {
   `).join("") : '<p class="empty">No requests match this filter.</p>';
 }
 
-async function loadAdvisorRequests() {
-  advisorRequests.innerHTML = '<p class="empty">Loading requests...</p>';
+async function loadAdvisorRequests({ notify = true } = {}) {
+  if (!advisorRequestIds) advisorRequests.innerHTML = '<p class="empty">Loading requests...</p>';
   try {
     const response = await fetch("/api/advising-requests");
     const data = await response.json();
     if (response.status === 401) return showLoggedOut("Your session has expired. Please sign in again.");
     if (!response.ok) throw new Error(data.error || "Could not load advisor requests");
+    const currentIds = new Set(data.map((item) => item.id));
+    const newPendingCount = advisorRequestIds
+      ? data.filter((item) => item.status === "pending" && !advisorRequestIds.has(item.id)).length
+      : 0;
+    if (notify && newPendingCount > 0) {
+      advisorNotification.textContent = `${newPendingCount} new advising request${newPendingCount === 1 ? "" : "s"} received.`;
+      advisorNotification.classList.remove("hidden");
+    }
+    advisorRequestIds = currentIds;
     renderAdvisorRequests(data);
   } catch (error) {
     advisorRequests.innerHTML = "";
@@ -116,11 +128,11 @@ advisorRequests.addEventListener("click", async (event) => {
   const data = await response.json();
   if (!response.ok) return showMessage(data.error || "Could not save decision", "error");
   showMessage("Decision saved.", "success");
-  loadAdvisorRequests();
+  await loadAdvisorRequests({ notify: false });
 });
 
 statusFilter.addEventListener("change", loadAdvisorRequests);
-document.querySelector("#advisor-refresh").addEventListener("click", loadAdvisorRequests);
+document.querySelector("#advisor-refresh").addEventListener("click", () => loadAdvisorRequests({ notify: false }));
 
 async function loadAdvisor() {
   advisor.textContent = "Loading advisor information...";
@@ -187,6 +199,9 @@ form.addEventListener("submit", async (event) => {
 
 function showLoggedOut(text = "") {
   currentUser = null;
+  advisorRequestIds = null;
+  if (advisorPollingTimer) clearInterval(advisorPollingTimer);
+  advisorPollingTimer = null;
   authPanel.classList.remove("hidden");
   appPanel.classList.add("hidden");
   if (text) showMessage(text, "error");
@@ -194,6 +209,8 @@ function showLoggedOut(text = "") {
 
 function showLoggedIn(user) {
   currentUser = user;
+  advisorRequestIds = null;
+  advisorNotification.classList.add("hidden");
   authPanel.classList.add("hidden");
   appPanel.classList.remove("hidden");
   userName.textContent = user.name;
@@ -209,6 +226,10 @@ function showLoggedIn(user) {
     loadAdvisor();
     loadRequests();
   }
+  if (advisorPollingTimer) clearInterval(advisorPollingTimer);
+  advisorPollingTimer = isAdvisor
+    ? setInterval(() => loadAdvisorRequests(), 10000)
+    : null;
 }
 
 function updateAuthMode() {
