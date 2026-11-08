@@ -5,7 +5,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "advising-platform",
-	"account_id": "76d545e2f8b20fd18c26c468c866e18a",
+	"account_id": "f48a3c4f6947d74914ca714f415ab96f",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-08-20",
 	"observability": {
@@ -20,7 +20,7 @@
 		{
 			"binding": "advising_db",
 			"database_name": "advising-db",
-			"database_id": "b03c3746-cf5e-43c4-9e90-4c33dbb14895",
+			"database_id": "d845c1c1-dc95-45a8-9262-db3646813aa9",
 			"remote": true
 		}
 	]
