@@ -6,14 +6,85 @@ type Bindings = CloudflareBindings & CampusInsightsConfig & {
   WEBHOOK_SECRET?: string;
   PARTNER_WEBHOOK_URL?: string;
 };
+type AuthUser = { id: string; email: string; name: string; role: "STUDENT" | "ADVISOR" | "ADMIN" };
+type StoredUser = AuthUser & { password_hash: string; password_salt: string; password_iterations: number };
 type IncomingWebhookPayload = { eventId?: string; eventType?: string; id?: string; type?: string; [key: string]: unknown };
 type SlotBookedPayload = { eventId: string; eventType: "slot_booked"; studentId: string; bookedSlot: { date: string; time: string }; lecturerEmail: string; serverTimestamp: string };
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings; Variables: { user: AuthUser } }>();
 const INBOUND_SIGNATURE_HEADER = "X-Webhook-Signature";
 const CAMPUS_INSIGHTS_SIGNATURE_HEADER = "x-signature";
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const SESSION_COOKIE = "advising_session";
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+const PASSWORD_ITERATIONS = 100_000;
+
+function encodeBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeBase64Url(value: string): Uint8Array {
+  const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+async function digest(value: string): Promise<string> {
+  return encodeBase64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))));
+}
+
+async function hashPassword(password: string, salt: Uint8Array, iterations = PASSWORD_ITERATIONS): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, 256);
+  return encodeBase64Url(new Uint8Array(bits));
+}
+
+function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
+  return difference === 0;
+}
+
+function readCookie(request: Request, name: string): string | undefined {
+  const header = request.headers.get("Cookie");
+  return header?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1);
+}
+
+function sessionCookie(token: string, maxAge = SESSION_TTL_SECONDS): string {
+  return `${SESSION_COOKIE}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Lax`;
+}
+
+async function createSession(db: D1Database, userId: string): Promise<string> {
+  const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
+  const token = encodeBase64Url(tokenBytes);
+  const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
+  await db.prepare("INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)")
+    .bind(crypto.randomUUID(), userId, await digest(token), expiresAt).run();
+  return token;
+}
+
+async function currentUser(c: { req: { raw: Request }; env: Bindings }): Promise<AuthUser | null> {
+  const token = readCookie(c.req.raw, SESSION_COOKIE);
+  if (!token) return null;
+  const row = await c.env.advising_db.prepare(
+    `SELECT users.id, users.email, users.name, users.role
+     FROM sessions JOIN users ON users.id = sessions.user_id
+     WHERE sessions.token_hash = ? AND sessions.expires_at > CURRENT_TIMESTAMP`,
+  ).bind(await digest(token)).first<AuthUser>();
+  return row ?? null;
+}
+
+async function requireAuth(c: { req: { raw: Request }; env: Bindings; json: (body: unknown, status: 401) => Response }): Promise<AuthUser | Response> {
+  const user = await currentUser(c);
+  return user ?? c.json({ error: "Authentication required" }, 401);
+}
+
+function publicUser(user: AuthUser): AuthUser {
+  return { id: user.id, email: user.email, name: user.name, role: user.role };
+}
 
 async function logIntegrationEvent(db: D1Database, eventId: string, eventType: string, source: string, status: string, payload: string | null, response: string | null) {
   return db.prepare(`INSERT INTO integration_events (event_id, event_type, source, status, payload, response)
@@ -37,32 +108,92 @@ app.get("/", async (c) => {
 });
 app.get("/api/health", (c) => c.json({ status: "ok", service: "advising-platform-api" }));
 
-// Existing Advising Request CRUD API
+app.post("/api/auth/register", async (c) => {
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  const body = parsed.body ?? {};
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  if (!isValidEmail(email) || !isNonEmptyString(name) || password.length < 8) {
+    return c.json({ error: "A valid email, name, and password of at least 8 characters are required" }, 400);
+  }
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const user: AuthUser = { id: crypto.randomUUID(), email, name, role: "STUDENT" };
+  try {
+    await c.env.advising_db.prepare(
+      `INSERT INTO users (id, email, name, role, password_hash, password_salt, password_iterations)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(user.id, user.email, user.name, user.role, await hashPassword(password, salt), encodeBase64Url(salt), PASSWORD_ITERATIONS).run();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) return c.json({ error: "An account with this email already exists" }, 409);
+    throw error;
+  }
+  const token = await createSession(c.env.advising_db, user.id);
+  return new Response(JSON.stringify({ user: publicUser(user) }), { status: 201, headers: { "content-type": "application/json", "Set-Cookie": sessionCookie(token) } });
+});
+
+app.post("/api/auth/login", async (c) => {
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  const body = parsed.body ?? {};
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  const stored = await c.env.advising_db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<StoredUser>();
+  if (!stored || !isValidEmail(email) || !isNonEmptyString(password)) return c.json({ error: "Invalid email or password" }, 401);
+  const valid = equalBytes(decodeBase64Url(stored.password_hash), decodeBase64Url(await hashPassword(password, decodeBase64Url(stored.password_salt), stored.password_iterations)));
+  if (!valid) return c.json({ error: "Invalid email or password" }, 401);
+  const token = await createSession(c.env.advising_db, stored.id);
+  return new Response(JSON.stringify({ user: publicUser(stored) }), { headers: { "content-type": "application/json", "Set-Cookie": sessionCookie(token) } });
+});
+
+app.get("/api/auth/me", async (c) => {
+  const user = await requireAuth(c);
+  return user instanceof Response ? user : c.json({ user: publicUser(user) });
+});
+
+app.post("/api/auth/logout", async (c) => {
+  const token = readCookie(c.req.raw, SESSION_COOKIE);
+  if (token) await c.env.advising_db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await digest(token)).run();
+  return new Response(null, { status: 204, headers: { "Set-Cookie": sessionCookie("", 0) } });
+});
+
+// Advising Request CRUD API. Requests are private to the authenticated student or staff.
 app.post("/api/advising-requests", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
   const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
   const body = parsed.body as Record<string, string>;
-  if (!isNonEmptyString(body.student_id) || !isNonEmptyString(body.agenda) || !isNonEmptyString(body.preferred_date) || !isNonEmptyString(body.preferred_time)) return c.json({ error: "student_id, agenda, preferred_date, and preferred_time are required" }, 400);
-  const result = await c.env.advising_db.prepare(`INSERT INTO advising_requests (student_id, agenda, preferred_date, preferred_time) VALUES (?, ?, ?, ?) RETURNING *`).bind(body.student_id, body.agenda, body.preferred_date, body.preferred_time).first();
+  if (!isNonEmptyString(body.agenda) || !isNonEmptyString(body.preferred_date) || !isNonEmptyString(body.preferred_time)) return c.json({ error: "agenda, preferred_date, and preferred_time are required" }, 400);
+  if (user.role === "STUDENT" && body.student_id && body.student_id !== user.id) return c.json({ error: "student_id must match the authenticated user" }, 403);
+  const studentId = user.role === "STUDENT" ? user.id : body.student_id;
+  if (!isNonEmptyString(studentId)) return c.json({ error: "student_id is required for staff-created requests" }, 400);
+  const result = await c.env.advising_db.prepare(`INSERT INTO advising_requests (student_id, agenda, preferred_date, preferred_time) VALUES (?, ?, ?, ?) RETURNING *`).bind(studentId, body.agenda, body.preferred_date, body.preferred_time).first();
   return c.json(result, 201);
 });
 app.get("/api/advising-requests", async (c) => {
-  const studentId = c.req.query("student_id");
-  if (studentId !== undefined && !isNonEmptyString(studentId)) return c.json({ error: "student_id cannot be empty" }, 400);
-  const query = studentId
-    ? "SELECT * FROM advising_requests WHERE student_id = ? ORDER BY id DESC"
-    : "SELECT * FROM advising_requests ORDER BY id DESC";
-  const statement = studentId ? c.env.advising_db.prepare(query).bind(studentId) : c.env.advising_db.prepare(query);
-  return c.json((await statement.all()).results);
+  const user = await requireAuth(c); if (user instanceof Response) return user;
+  const query = user.role === "STUDENT" ? "SELECT * FROM advising_requests WHERE student_id = ? ORDER BY id DESC" : "SELECT * FROM advising_requests ORDER BY id DESC";
+  const result = user.role === "STUDENT" ? await c.env.advising_db.prepare(query).bind(user.id).all() : await c.env.advising_db.prepare(query).all();
+  return c.json(result.results);
 });
-app.get("/api/advising-requests/:id", async (c) => { const result = await c.env.advising_db.prepare("SELECT * FROM advising_requests WHERE id = ?").bind(c.req.param("id")).first(); return result ? c.json(result) : c.json({ error: "Advising request not found" }, 404); });
+app.get("/api/advising-requests/:id", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
+  const result = await c.env.advising_db.prepare("SELECT * FROM advising_requests WHERE id = ?").bind(c.req.param("id")).first<{ student_id: string }>();
+  if (!result) return c.json({ error: "Advising request not found" }, 404);
+  if (user.role === "STUDENT" && result.student_id !== user.id) return c.json({ error: "Forbidden" }, 403);
+  return c.json(result);
+});
 app.patch("/api/advising-requests/:id", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
   const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
   const body = parsed.body as { agenda?: string; preferred_date?: string; preferred_time?: string; status?: string };
   if ([body.agenda, body.preferred_date, body.preferred_time, body.status].every((value) => value === undefined)) return c.json({ error: "At least one field is required to update" }, 400);
-  const result = await c.env.advising_db.prepare(`UPDATE advising_requests SET agenda = COALESCE(?, agenda), preferred_date = COALESCE(?, preferred_date), preferred_time = COALESCE(?, preferred_time), status = COALESCE(?, status), updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *`).bind(body.agenda ?? null, body.preferred_date ?? null, body.preferred_time ?? null, body.status ?? null, c.req.param("id")).first();
+  const result = await c.env.advising_db.prepare(`UPDATE advising_requests SET agenda = COALESCE(?, agenda), preferred_date = COALESCE(?, preferred_date), preferred_time = COALESCE(?, preferred_time), status = COALESCE(?, status), updated_at = CURRENT_TIMESTAMP WHERE id = ? ${user.role === "STUDENT" ? "AND student_id = ?" : ""} RETURNING *`).bind(body.agenda ?? null, body.preferred_date ?? null, body.preferred_time ?? null, body.status ?? null, c.req.param("id"), ...(user.role === "STUDENT" ? [user.id] : [])).first();
   return result ? c.json(result) : c.json({ error: "Advising request not found" }, 404);
 });
-app.delete("/api/advising-requests/:id", async (c) => { const result = await c.env.advising_db.prepare("DELETE FROM advising_requests WHERE id = ? RETURNING *").bind(c.req.param("id")).first(); return result ? c.body(null, 204) : c.json({ error: "Advising request not found" }, 404); });
+app.delete("/api/advising-requests/:id", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
+  const result = await c.env.advising_db.prepare(`DELETE FROM advising_requests WHERE id = ? ${user.role === "STUDENT" ? "AND student_id = ?" : ""} RETURNING *`).bind(c.req.param("id"), ...(user.role === "STUDENT" ? [user.id] : [])).first();
+  return result ? c.body(null, 204) : c.json({ error: "Advising request not found" }, 404);
+});
 
 // Campus Insights consumer endpoints. Only the lecturer endpoint has a confirmed partner URL.
 const client = (c: { env: Bindings }) => new CampusInsightsClient(c.env);
