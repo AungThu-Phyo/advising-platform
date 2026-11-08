@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advising Platform</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">Student portal</p>
+      <h1>Advising Platform</h1>
+      <p class="intro">Submit an advising request and track your requests.</p>
+    </header>
+
+    <section id="auth-panel" class="card">
+      <div class="section-heading">
+        <h2 id="auth-title">Sign in</h2>
+        <button id="auth-toggle" class="secondary" type="button">Create account</button>
+      </div>
+      <p id="auth-description">Sign in to view and submit your advising requests.</p>
+      <form id="auth-form">
+        <div id="name-field" class="hidden">
+          <label for="name">Name</label>
+          <input id="name" type="text" autocomplete="name">
+        </div>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required>
+        <label for="password">Password</label>
+        <div class="password-field">
+          <input id="password" type="password" autocomplete="current-password" minlength="8" required>
+          <button class="password-toggle" type="button" data-password-target="password" aria-label="Show password" aria-pressed="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Zm9.5 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>
+          </button>
+        </div>
+        <div id="confirm-password-field" class="hidden">
+          <label for="confirm-password">Confirm password</label>
+          <div class="password-field">
+            <input id="confirm-password" type="password" autocomplete="new-password" minlength="8">
+            <button class="password-toggle" type="button" data-password-target="confirm-password" aria-label="Show confirmation password" aria-pressed="false">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Zm9.5 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>
+            </button>
+          </div>
+        </div>
+        <button id="auth-submit" type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <div id="message" role="status" aria-live="polite"></div>
+
+    <section id="app-panel" class="hidden">
+      <div class="user-bar card">
+        <div>
+          <strong id="user-name"></strong>
+          <small id="user-email"></small>
+        </div>
+        <button id="logout" class="secondary" type="button">Sign out</button>
+      </div>
+      <section class="card advisor-card">
+        <h2>Your assigned advisor</h2>
+        <div id="advisor" class="empty">Loading advisor information...</div>
+      </section>
+      <section class="grid">
+        <form id="request-form" class="card">
+        <h2>Request advising</h2>
+        <label for="agenda">Agenda</label>
+        <textarea id="agenda" required placeholder="What would you like to discuss?"></textarea>
+        <label for="date">Preferred date</label>
+        <input id="date" type="date" required>
+        <label for="time">Available time slot</label>
+        <select id="time" required disabled>
+          <option value="">Select a date first</option>
+        </select>
+        <p id="availability-message" class="empty">Choose a date to load available slots.</p>
+        <button type="submit">Submit request</button>
+        </form>
+
+        <section class="card">
+        <div class="section-heading">
+          <h2>My requests</h2>
+          <button id="refresh" class="secondary" type="button">Refresh</button>
+        </div>
+        <div id="requests" class="requests" aria-live="polite"></div>
+        </section>
+      </section>
+      <section id="advisor-panel" class="card hidden">
+        <div id="advisor-notification" class="notification hidden" role="status" aria-live="polite"></div>
+        <div class="section-heading">
+          <h2>Advisor requests</h2>
+          <button id="advisor-refresh" class="secondary" type="button">Refresh</button>
+        </div>
+        <label for="status-filter">Filter by status</label>
+        <select id="status-filter">
+          <option value="">All requests</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <div id="advisor-requests" class="requests" aria-live="polite"></div>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -12,6 +12,10 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	"assets": {
+		"directory": "./public",
+		"binding": "ASSETS"
+	},
 	"d1_databases": [
 		{
 			"binding": "advising_db",

@@ -28,6 +28,35 @@ New registrations are `STUDENT` accounts. `ADVISOR` and `ADMIN` roles should be
 assigned through a controlled database/admin workflow; they cannot be requested
 by a public registration.
 
+The Worker serves the authenticated student frontend at `http://localhost:8787/`.
+Register or sign in, submit an advising request, and the “My requests” panel
+loads only the authenticated student's requests through
+`GET /api/advising-requests`. The browser handles the HttpOnly session cookie
+automatically.
+
+Student accounts can be assigned an advisor through `users.advisor_email`.
+The student UI reads the assigned advisor from `/api/student/advisor` and
+loads availability from `/api/student/advisor/availability`. Availability
+uses the configured Campus Insights endpoint when available and otherwise
+returns clearly labelled local demo slots.
+
+Apply migration `0004_add_advisor_assignments.sql` before using this flow.
+`DEFAULT_ADVISOR_EMAIL` can assign the confirmed classroom advisor to new
+registrations during local development; production assignments should be
+written to `users.advisor_email` by an admin workflow.
+
+Advisor accounts (`role = 'ADVISOR'`) see requests assigned to their email and
+can approve or reject pending requests with a decision note from the advisor
+view. Apply migration `0005_add_decision_notes.sql` before using decisions.
+
+wrangler command :
+
+to assign an advisor to a student-
+npx wrangler d1 execute advising-db --remote --command "UPDATE users SET advisor_email = 'john.doe@mfu.ac.th' WHERE email = 'student@example.com';"
+
+to promote a user account to ADVISOR role-
+npx wrangler d1 execute advising-db --remote --command "UPDATE users SET role = 'ADVISOR' WHERE email = 'advisor@example.com';"
+
 [For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
 
 ```txt

@@ -43,7 +43,8 @@ export class CampusInsightsClient {
   async getConfigured(name: EndpointName, values: Record<string, string>): Promise<IntegrationResult> {
     const endpoint = endpointFor(this.config, name);
     if (!endpoint) return { status: 503, body: { success: false, source: "campus-insights", fallback: true, error: "Campus Insights endpoint is not configured", endpoint: name } };
-    return this.fetchPartner(expandTemplate(endpoint, values));
+    if (!this.config.CAMPUS_INSIGHTS_API_KEY) return { status: 503, body: { success: false, source: "campus-insights", fallback: true, error: "Campus Insights API key is not configured", endpoint: name } };
+    return this.fetchPartner(expandTemplate(endpoint, values), { "x-api-key": this.config.CAMPUS_INSIGHTS_API_KEY });
   }
 
   private async fetchPartner(url: string, headers: HeadersInit = {}): Promise<IntegrationResult> {
