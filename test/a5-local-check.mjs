@@ -50,12 +50,8 @@ async function request(path, init = {}, env = {}) {
 }
 
 assert.equal((await request("/api/health")).status, 200);
-const alexRequests = await request("/api/advising-requests?student_id=MFU650100001");
-assert.equal(alexRequests.status, 200);
-assert.deepEqual((await alexRequests.json()).map((item) => item.student_id), ["MFU650100001"]);
-const mayaRequests = await request("/api/advising-requests?student_id=MFU650100002");
-assert.deepEqual((await mayaRequests.json()).map((item) => item.student_id), ["MFU650100002"]);
-assert.equal((await request("/api/advising-requests?student_id=%20")).status, 400);
+assert.equal((await request("/api/auth/me")).status, 401);
+assert.equal((await request("/api/advising-requests")).status, 401);
 assert.equal((await request("/api/webhooks/partner")).status, 200);
 assert.equal((await request("/api/campus-insights/availability/prof_101?date=2026-09-25")).status, 503);
 assert.equal((await request("/api/campus-insights/lecturers/not-an-email")).status, 400);
