@@ -2,3 +2,4 @@
 WEBHOOK_SECRET=replace-with-inbound-hmac-secret
 CAMPUS_INSIGHTS_API_KEY=replace-with-team-24-api-key
 PARTNER_WEBHOOK_URL=https://campus-insight-b9mp.onrender.com/api/v1/webhooks/advising-event
+DEFAULT_ADVISOR_EMAIL=john.doe@mfu.ac.th
