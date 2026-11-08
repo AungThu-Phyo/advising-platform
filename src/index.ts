@@ -211,7 +211,10 @@ app.get("/api/advising-requests", async (c) => {
   const query = user.role === "STUDENT"
     ? "SELECT * FROM advising_requests WHERE student_id = ? ORDER BY id DESC"
     : user.role === "ADVISOR"
-      ? "SELECT * FROM advising_requests WHERE advisor_email = ? ORDER BY id DESC"
+      ? `SELECT advising_requests.* FROM advising_requests
+         LEFT JOIN users ON users.id = advising_requests.student_id
+         WHERE LOWER(COALESCE(advising_requests.advisor_email, users.advisor_email)) = LOWER(?)
+         ORDER BY advising_requests.id DESC`
       : "SELECT * FROM advising_requests ORDER BY id DESC";
   const result = user.role === "STUDENT"
     ? await c.env.advising_db.prepare(query).bind(user.id).all()
