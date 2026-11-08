@@ -128,7 +128,7 @@ app.post("/api/auth/register", async (c) => {
   try {
     await c.env.advising_db.prepare(
       `INSERT INTO users (id, email, name, role, advisor_email, password_hash, password_salt, password_iterations)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(user.id, user.email, user.name, user.role, user.advisor_email, await hashPassword(password, salt), encodeBase64Url(salt), PASSWORD_ITERATIONS).run();
   } catch (error) {
     if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) return c.json({ error: "An account with this email already exists" }, 409);
@@ -208,8 +208,16 @@ app.post("/api/advising-requests", async (c) => {
 });
 app.get("/api/advising-requests", async (c) => {
   const user = await requireAuth(c); if (user instanceof Response) return user;
-  const query = user.role === "STUDENT" ? "SELECT * FROM advising_requests WHERE student_id = ? ORDER BY id DESC" : "SELECT * FROM advising_requests ORDER BY id DESC";
-  const result = user.role === "STUDENT" ? await c.env.advising_db.prepare(query).bind(user.id).all() : await c.env.advising_db.prepare(query).all();
+  const query = user.role === "STUDENT"
+    ? "SELECT * FROM advising_requests WHERE student_id = ? ORDER BY id DESC"
+    : user.role === "ADVISOR"
+      ? "SELECT * FROM advising_requests WHERE advisor_email = ? ORDER BY id DESC"
+      : "SELECT * FROM advising_requests ORDER BY id DESC";
+  const result = user.role === "STUDENT"
+    ? await c.env.advising_db.prepare(query).bind(user.id).all()
+    : user.role === "ADVISOR"
+      ? await c.env.advising_db.prepare(query).bind(user.email).all()
+      : await c.env.advising_db.prepare(query).all();
   return c.json(result.results);
 });
 app.get("/api/advising-requests/:id", async (c) => {
@@ -231,6 +239,25 @@ app.delete("/api/advising-requests/:id", async (c) => {
   const user = await requireAuth(c); if (user instanceof Response) return user;
   const result = await c.env.advising_db.prepare(`DELETE FROM advising_requests WHERE id = ? ${user.role === "STUDENT" ? "AND student_id = ?" : ""} RETURNING *`).bind(c.req.param("id"), ...(user.role === "STUDENT" ? [user.id] : [])).first();
   return result ? c.body(null, 204) : c.json({ error: "Advising request not found" }, 404);
+});
+
+app.patch("/api/advising-requests/:id/decision", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
+  if (user.role !== "ADVISOR" && user.role !== "ADMIN") return c.json({ error: "Advisor access required" }, 403);
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  const body = parsed.body ?? {};
+  const status = body.status;
+  const decisionNote = typeof body.decision_note === "string" ? body.decision_note.trim() : "";
+  if (status !== "approved" && status !== "rejected") return c.json({ error: "status must be approved or rejected" }, 400);
+  if (!isNonEmptyString(decisionNote)) return c.json({ error: "decision_note is required" }, 400);
+  const request = await c.env.advising_db.prepare(
+    `SELECT id FROM advising_requests WHERE id = ? ${user.role === "ADVISOR" ? "AND advisor_email = ?" : ""}`,
+  ).bind(c.req.param("id"), ...(user.role === "ADVISOR" ? [user.email] : [])).first();
+  if (!request) return c.json({ error: "Advising request not found" }, 404);
+  const result = await c.env.advising_db.prepare(
+    "UPDATE advising_requests SET status = ?, decision_note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *",
+  ).bind(status, decisionNote, c.req.param("id")).first();
+  return c.json(result);
 });
 
 // Campus Insights consumer endpoints. Only the lecturer endpoint has a confirmed partner URL.
