@@ -381,6 +381,7 @@ document.querySelectorAll(".password-toggle").forEach((toggle) => {
 });
 
 document.querySelector("#logout").addEventListener("click", async () => {
+  if (!window.confirm("Are you sure you want to sign out?")) return;
   try {
     const response = await fetch("/api/auth/logout", { method: "POST" });
     if (!response.ok) throw new Error("Could not sign out");
