@@ -92,7 +92,7 @@ async function currentUser(c: { req: { raw: Request }; env: Bindings }): Promise
   const row = await c.env.advising_db.prepare(
     `SELECT users.id, users.email, users.name, users.role, users.advisor_email
      FROM sessions JOIN users ON users.id = sessions.user_id
-     WHERE sessions.token_hash = ? AND sessions.expires_at > CURRENT_TIMESTAMP AND users.is_active = 1`,
+     WHERE sessions.token_hash = ? AND sessions.expires_at > CURRENT_TIMESTAMP`,
   ).bind(await digest(token)).first<AuthUser>();
   return row ?? null;
 }
@@ -293,8 +293,9 @@ app.patch("/api/advising-requests/:id", async (c) => {
   const user = await requireAuth(c); if (user instanceof Response) return user;
   const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
   const body = parsed.body as { agenda?: string; preferred_date?: string; preferred_time?: string; status?: string };
-  if ([body.agenda, body.preferred_date, body.preferred_time, body.status].every((value) => value === undefined)) return c.json({ error: "At least one field is required to update" }, 400);
-  const result = await c.env.advising_db.prepare(`UPDATE advising_requests SET agenda = COALESCE(?, agenda), preferred_date = COALESCE(?, preferred_date), preferred_time = COALESCE(?, preferred_time), status = COALESCE(?, status), updated_at = CURRENT_TIMESTAMP WHERE id = ? ${user.role === "STUDENT" ? "AND student_id = ?" : ""} RETURNING *`).bind(body.agenda ?? null, body.preferred_date ?? null, body.preferred_time ?? null, body.status ?? null, c.req.param("id"), ...(user.role === "STUDENT" ? [user.id] : [])).first();
+  if (body.status !== undefined) return c.json({ error: "Use the decision endpoint to change request status" }, 400);
+  if ([body.agenda, body.preferred_date, body.preferred_time].every((value) => value === undefined)) return c.json({ error: "At least one field is required to update" }, 400);
+  const result = await c.env.advising_db.prepare(`UPDATE advising_requests SET agenda = COALESCE(?, agenda), preferred_date = COALESCE(?, preferred_date), preferred_time = COALESCE(?, preferred_time), updated_at = CURRENT_TIMESTAMP WHERE id = ? ${user.role === "STUDENT" ? "AND student_id = ?" : ""} RETURNING *`).bind(body.agenda ?? null, body.preferred_date ?? null, body.preferred_time ?? null, c.req.param("id"), ...(user.role === "STUDENT" ? [user.id] : [])).first();
   return result ? c.json(result) : c.json({ error: "Advising request not found" }, 404);
 });
 app.delete("/api/advising-requests/:id", async (c) => {
@@ -580,7 +581,7 @@ app.post("/api/lecturers/:uid/appointments", async (c) => {
     const generated = await generateLecturerSlots(c.env.advising_db, lecturer.uid, body.date, endMinutes - startMinutes);
     const selected = generated.find((slot) => slot.startTime === starts && slot.endTime === ends);
     if (!selected) return c.json({ error: "Selected time is not currently available" }, 409);
-    const advisor = lecturer.email ? await c.env.advising_db.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND role IN ('ADVISOR', 'advisor') AND is_active = 1").bind(lecturer.email).first<{ id: string }>() : null;
+    const advisor = lecturer.email ? await c.env.advising_db.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND role IN ('ADVISOR', 'advisor')").bind(lecturer.email).first<{ id: string }>() : null;
     if (!advisor) return c.json({ error: "Lecturer is not linked to an active advisor account" }, 409);
     const slot = await createSlot(c.env.advising_db, { advisorId: advisor.id, startsAt: selected.startsAt, endsAt: selected.endsAt });
     return c.json(await bookAppointment(c.env.advising_db, { slotId: slot.id, studentId: user.id, agendaRaw: typeof body.agenda === "string" ? body.agenda : "" }), 201);
