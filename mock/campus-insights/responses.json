@@ -1,0 +1,8 @@
+{
+  "success": { "status": 200, "body": { "data": { "id": "MOCK-ADVISOR-001" } } },
+  "invalidRequest": { "status": 400, "body": { "error": "invalid request" } },
+  "unauthorized": { "status": 401, "body": { "error": "unauthorized" } },
+  "notFound": { "status": 404, "body": { "error": "not found" } },
+  "serverError": { "status": 500, "body": { "error": "server error" } },
+  "duplicateEvent": { "status": 409, "body": { "error": "duplicate event" } }
+}

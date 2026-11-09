@@ -1,0 +1,17 @@
+[
+  { "lecturerId": "digital-technology-1", "schoolId": "digital-technology", "dayOfWeek": 1, "startTime": "09:00", "endTime": "12:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "digital-technology-2", "schoolId": "digital-technology", "dayOfWeek": 2, "startTime": "13:00", "endTime": "16:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "digital-technology-3", "schoolId": "digital-technology", "dayOfWeek": 3, "startTime": "09:00", "endTime": "12:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "digital-technology-4", "schoolId": "digital-technology", "dayOfWeek": 4, "startTime": "10:00", "endTime": "13:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "digital-technology-5", "schoolId": "digital-technology", "dayOfWeek": 5, "startTime": "13:00", "endTime": "16:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "health-sciece-1", "schoolId": "health-sciece", "dayOfWeek": 1, "startTime": "09:00", "endTime": "12:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "health-sciece-2", "schoolId": "health-sciece", "dayOfWeek": 2, "startTime": "13:00", "endTime": "16:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "health-sciece-3", "schoolId": "health-sciece", "dayOfWeek": 3, "startTime": "09:00", "endTime": "12:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "health-sciece-4", "schoolId": "health-sciece", "dayOfWeek": 4, "startTime": "10:00", "endTime": "13:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "health-sciece-5", "schoolId": "health-sciece", "dayOfWeek": 5, "startTime": "13:00", "endTime": "16:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "management-1", "schoolId": "management", "dayOfWeek": 1, "startTime": "09:00", "endTime": "12:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "management-2", "schoolId": "management", "dayOfWeek": 2, "startTime": "13:00", "endTime": "16:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "management-3", "schoolId": "management", "dayOfWeek": 3, "startTime": "09:00", "endTime": "12:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "management-4", "schoolId": "management", "dayOfWeek": 4, "startTime": "10:00", "endTime": "13:00", "timezone": "Asia/Bangkok" },
+  { "lecturerId": "management-5", "schoolId": "management", "dayOfWeek": 5, "startTime": "13:00", "endTime": "16:00", "timezone": "Asia/Bangkok" }
+]

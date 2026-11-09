@@ -1,0 +1,8 @@
+[
+  {
+    "sessionId": "MOCK-SESSION-001",
+    "appointmentId": "MOCK-APPT-001",
+    "topic": "Database design",
+    "status": "scheduled"
+  }
+]

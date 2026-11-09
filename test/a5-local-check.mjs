@@ -27,6 +27,9 @@ const db = {
             events.push({ eventId, eventType, source, status, payload, response });
           },
           async first() {
+            if (query.includes("FROM integration_events")) {
+              return events.find((event) => event.eventId === values[0]) ?? null;
+            }
             return advisingRequests.find((request) => request.id === Number(values[0])) ?? null;
           },
           async all() {
@@ -71,10 +74,17 @@ const originalFetch = globalThis.fetch;
 
 // Campus Insights lecturer integration tests
 const lecturerPath = "/api/campus-insights/lecturers/john.doe%40mfu.ac.th";
-const lecturerEnv = { CAMPUS_INSIGHTS_API_KEY: "test-campus-key" };
+const lecturerEnv = {
+  CAMPUS_INSIGHTS_ENABLED: "true",
+  CAMPUS_INSIGHTS_API_KEY: "test-campus-key",
+  CAMPUS_INSIGHTS_LECTURER_URL: "https://mock-campus-insights.test/lecturers",
+};
 
 // Missing API key
 assert.equal((await request(lecturerPath)).status, 503);
+// Disabled until the partner contract is configured
+assert.equal((await request(lecturerPath, {}, { CAMPUS_INSIGHTS_API_KEY: "test-campus-key" })).status, 503);
+const lecturerUidPath = "/api/campus-insights/lecturers/by-uid/management-1";
 
 // Successful lecturer lookup
 globalThis.fetch = async (url, init) => {
@@ -87,6 +97,20 @@ globalThis.fetch = async (url, init) => {
 const lecturerSuccess = await request(lecturerPath, {}, lecturerEnv);
 assert.equal(lecturerSuccess.status, 200);
 assert.equal((await lecturerSuccess.json()).success, true);
+
+globalThis.fetch = async (url, init) => {
+  const parsedUrl = new URL(String(url));
+  assert.equal(parsedUrl.pathname, "/lecturers/management-1");
+  assert.equal(new Headers(init.headers).get("x-api-key"), "test-campus-key");
+  return new Response('{"uid":"management-1"}', { status: 200 });
+};
+const lecturerUidSuccess = await request(lecturerUidPath, {}, {
+  CAMPUS_INSIGHTS_ENABLED: "true",
+  ADVISING_PLATFORM_SECRET_KEY: "test-campus-key",
+  CAMPUS_INSIGHTS_LECTURER_BY_UID_URL: "https://mock-campus-insights.test/lecturers/{uid}",
+});
+assert.equal(lecturerUidSuccess.status, 200);
+assert.equal((await lecturerUidSuccess.json()).success, true);
 
 // Partner rate limiting
 globalThis.fetch = async () =>
@@ -117,10 +141,14 @@ globalThis.fetch = originalFetch;
 
 console.log("Campus Insights lecturer tests passed.");
 globalThis.fetch = async () => new Response('{"status":"Webhook received and logged successfully"}', { status: 200 });
-const sender = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, { CAMPUS_INSIGHTS_API_KEY: "test-key", PARTNER_WEBHOOK_URL: "https://example.invalid/webhook" });
+const senderEnv = { CAMPUS_INSIGHTS_ENABLED: "true", CAMPUS_INSIGHTS_API_KEY: "test-key", PARTNER_WEBHOOK_URL: "https://mock-campus-insights.test/webhook" };
+const sender = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ eventId: "mock-send-001", studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, senderEnv);
 assert.equal(sender.status, 200);
+const outboundDuplicate = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ eventId: "mock-send-001", studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, senderEnv);
+assert.equal(outboundDuplicate.status, 200);
+assert.equal((await outboundDuplicate.json()).duplicate, true);
 globalThis.fetch = async () => { throw new TypeError("network unavailable"); };
-const degraded = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "student-2", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, { CAMPUS_INSIGHTS_API_KEY: "test-key", PARTNER_WEBHOOK_URL: "https://example.invalid/webhook" });
+const degraded = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "student-2", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, senderEnv);
 assert.equal(degraded.status, 502);
 assert.equal((await degraded.json()).fallback, true);
 globalThis.fetch = originalFetch;
