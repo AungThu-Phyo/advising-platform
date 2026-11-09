@@ -34,10 +34,9 @@ const ALLOWED_CORS_ORIGINS = new Set([
   "https://campus-insight-623f0.web.app",
   "http://localhost:5173",
 ]);
-const DEMO_AVAILABILITY = [
-  { date: "2026-11-10", time: "09:00-10:00" },
-  { date: "2026-11-10", time: "10:00-11:00" },
-  { date: "2026-11-12", time: "13:00-14:00" },
+const REQUEST_TIME_SUGGESTIONS = [
+  "09:00-10:00", "10:00-11:00", "11:00-12:00", "13:00-14:00",
+  "14:00-15:00", "15:00-16:00", "16:00-17:00",
 ];
 
 function encodeBase64Url(bytes: Uint8Array): string {
@@ -210,6 +209,65 @@ app.post("/api/auth/login", async (c) => {
   return new Response(JSON.stringify({ user: publicUser(stored) }), { headers: { "content-type": "application/json", "Set-Cookie": sessionCookie(token) } });
 });
 
+app.post("/api/auth/advisor-login", async (c) => {
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  const email = typeof parsed.body?.email === "string" ? parsed.body.email.trim().toLowerCase() : "";
+  const password = typeof parsed.body?.password === "string" ? parsed.body.password : "";
+  if (!isValidEmail(email) || !isNonEmptyString(password)) return c.json({ error: "A valid lecturer email and password are required" }, 400);
+  const lecturer = await c.env.advising_db.prepare(
+    "SELECT uid FROM lecturer_profiles WHERE LOWER(TRIM(email)) = ? AND is_active = 1",
+  ).bind(email).first<{ uid: string }>();
+  if (!lecturer) return c.json({ error: "Advisor access is available only to active lecturer accounts" }, 403);
+  const user = await c.env.advising_db.prepare("SELECT * FROM users WHERE LOWER(email) = ?").bind(email).first<StoredUser & { advisor_password_set?: number }>();
+  if (!user || user.role !== "ADVISOR" || user.advisor_password_set !== 1) {
+    return c.json({ error: "Set up your advisor password before signing in" }, 403);
+  }
+  const valid = user.password_hash && user.password_salt && user.password_iterations
+    ? equalBytes(decodeBase64Url(user.password_hash), decodeBase64Url(await hashPassword(password, decodeBase64Url(user.password_salt), user.password_iterations)))
+    : false;
+  if (!valid) return c.json({ error: "Invalid lecturer email or password" }, 401);
+  const token = await createSession(c.env.advising_db, user.id);
+  return new Response(JSON.stringify({ user: publicUser(user) }), { headers: { "content-type": "application/json", "Set-Cookie": sessionCookie(token) } });
+});
+
+app.post("/api/auth/advisor-setup", async (c) => {
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  const email = typeof parsed.body?.email === "string" ? parsed.body.email.trim().toLowerCase() : "";
+  const password = typeof parsed.body?.password === "string" ? parsed.body.password : "";
+  if (!isValidEmail(email) || password.length < 8) return c.json({ error: "A valid lecturer email and password of at least 8 characters are required" }, 400);
+  const lecturer = await c.env.advising_db.prepare(
+    "SELECT uid, name FROM lecturer_profiles WHERE LOWER(TRIM(email)) = ? AND is_active = 1",
+  ).bind(email).first<{ uid: string; name: string | null }>();
+  if (!lecturer) return c.json({ error: "Advisor password setup is available only to active lecturer accounts" }, 403);
+  const existing = await c.env.advising_db.prepare("SELECT * FROM users WHERE LOWER(email) = ?").bind(email).first<StoredUser & { advisor_password_set?: number }>();
+  if (existing && existing.role !== "ADVISOR") return c.json({ error: "This email is already used by a non-advisor account" }, 409);
+  if (existing?.advisor_password_set === 1) return c.json({ error: "An advisor password is already set. Sign in or contact the administrator to reset it." }, 409);
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const passwordHash = await hashPassword(password, salt);
+  let user: AuthUser;
+  if (existing) {
+    const updated = await c.env.advising_db.prepare(
+      "UPDATE users SET password_hash = ?, password_salt = ?, password_iterations = ?, advisor_password_set = 1 WHERE id = ? AND role = 'ADVISOR' AND advisor_password_set = 0",
+    ).bind(passwordHash, encodeBase64Url(salt), PASSWORD_ITERATIONS, existing.id).run();
+    if (updated.meta.changes !== 1) return c.json({ error: "Advisor password setup has already started. Please sign in or contact the administrator." }, 409);
+    user = { id: existing.id, email: existing.email, name: existing.name, role: "ADVISOR" };
+  } else {
+    user = { id: crypto.randomUUID(), email, name: lecturer.name?.trim() || email, role: "ADVISOR" };
+    try {
+      await c.env.advising_db.prepare(
+        `INSERT INTO users (id, email, name, role, password_hash, password_salt, password_iterations, advisor_password_set)
+         VALUES (?, ?, ?, 'ADVISOR', ?, ?, ?, 1)`,
+      ).bind(user.id, user.email, user.name, passwordHash, encodeBase64Url(salt), PASSWORD_ITERATIONS).run();
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) return c.json({ error: "Advisor account setup has already started. Please sign in or contact the administrator." }, 409);
+      throw error;
+    }
+  }
+  const token = await createSession(c.env.advising_db, user.id);
+  return new Response(JSON.stringify({ success: true, user }), { status: 201, headers: { "content-type": "application/json", "Set-Cookie": sessionCookie(token) } });
+});
+
 app.get("/api/auth/me", async (c) => {
   const user = await requireAuth(c);
   return user instanceof Response ? user : c.json({ user: publicUser(user) });
@@ -226,6 +284,25 @@ app.get("/api/student/advisor", async (c) => {
   if (user.role !== "STUDENT") return c.json({ error: "This endpoint is for students" }, 403);
   if (!user.advisor_email) return c.json({ error: "No advisor is assigned to this student" }, 503);
   return c.json({ advisorEmail: user.advisor_email, profile: (await client(c).getLecturerByEmail(user.advisor_email)).body });
+});
+
+app.post("/api/student/advisor", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
+  if (user.role !== "STUDENT") return c.json({ error: "This endpoint is for students" }, 403);
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  const lecturerUid = parsed.body?.lecturerUid;
+  if (!isNonEmptyString(lecturerUid)) return c.json({ error: "lecturerUid is required" }, 400);
+  const lecturer = await client(c).getLecturerByUid(lecturerUid);
+  if (lecturer.status !== 200) return c.json({ error: "Could not verify lecturer with Campus Insights" }, lecturer.status as 429 | 502 | 503 | 504);
+  const payload = lecturer.body.data;
+  const record = isRecord(payload) && isRecord(payload.data) ? payload.data : payload;
+  const lecturerEmail = isRecord(record) && typeof record.email === "string" ? record.email.trim() : "";
+  if (!isValidEmail(lecturerEmail)) return c.json({ error: "Retrieved lecturer does not have a valid email address" }, 422);
+  const result = await c.env.advising_db.prepare(
+    "UPDATE users SET advisor_email = ? WHERE id = ? AND role = 'STUDENT' RETURNING advisor_email",
+  ).bind(lecturerEmail, user.id).first<{ advisor_email: string }>();
+  if (!result) return c.json({ error: "Student account not found" }, 404);
+  return c.json({ success: true, advisorEmail: result.advisor_email, lecturer: record });
 });
 
 app.get("/api/student/advisor/availability", async (c) => {
@@ -247,7 +324,7 @@ app.get("/api/student/advisor/availability", async (c) => {
     fallback: true,
     advisorEmail: user.advisor_email,
     date,
-    slots: DEMO_AVAILABILITY.filter((slot) => slot.date === date),
+    slots: REQUEST_TIME_SUGGESTIONS.map((time) => ({ date, time })),
   });
 });
 
@@ -314,7 +391,10 @@ app.patch("/api/advising-requests/:id/decision", async (c) => {
   if (status !== "approved" && status !== "rejected") return c.json({ error: "status must be approved or rejected" }, 400);
   if (!isNonEmptyString(decisionNote)) return c.json({ error: "decision_note is required" }, 400);
   const request = await c.env.advising_db.prepare(
-    `SELECT id FROM advising_requests WHERE id = ? ${user.role === "ADVISOR" ? "AND advisor_email = ?" : ""}`,
+    `SELECT advising_requests.id FROM advising_requests
+     LEFT JOIN users ON users.id = advising_requests.student_id
+     WHERE advising_requests.id = ? AND advising_requests.status = 'pending'
+     ${user.role === "ADVISOR" ? "AND LOWER(COALESCE(advising_requests.advisor_email, users.advisor_email)) = LOWER(?)" : ""}`,
   ).bind(c.req.param("id"), ...(user.role === "ADVISOR" ? [user.email] : [])).first();
   if (!request) return c.json({ error: "Advising request not found" }, 404);
   const result = await c.env.advising_db.prepare(

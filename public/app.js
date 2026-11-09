@@ -4,6 +4,11 @@ const authForm = document.querySelector("#auth-form");
 const authTitle = document.querySelector("#auth-title");
 const authDescription = document.querySelector("#auth-description");
 const authToggle = document.querySelector("#auth-toggle");
+const authRoleSwitch = document.querySelector("#auth-role-switch");
+const studentModeToggle = document.querySelector("#student-mode-toggle");
+const advisorModeToggle = document.querySelector("#advisor-mode-toggle");
+const advisorSetupToggle = document.querySelector("#advisor-setup-toggle");
+const advisorDemoNote = document.querySelector("#advisor-demo-note");
 const authSubmit = document.querySelector("#auth-submit");
 const nameField = document.querySelector("#name-field");
 const confirmPasswordField = document.querySelector("#confirm-password-field");
@@ -15,6 +20,7 @@ const userName = document.querySelector("#user-name");
 const userEmail = document.querySelector("#user-email");
 const userBar = document.querySelector("#user-bar");
 const studentPartnerData = document.querySelector("#student-partner-data");
+const assignedAdvisor = document.querySelector("#assigned-advisor");
 const dateInput = document.querySelector("#date");
 const timeInput = document.querySelector("#time");
 const availabilityMessage = document.querySelector("#availability-message");
@@ -32,6 +38,8 @@ const lecturerResult = document.querySelector("#lecturer-result");
 const loadPartnerLecturersButton = document.querySelector("#load-partner-lecturers");
 const partnerLecturers = document.querySelector("#partner-lecturers");
 let registerMode = false;
+let advisorMode = false;
+let advisorSetupMode = false;
 let currentUser = null;
 let advisorRequestIds = null;
 let advisorPollingTimer = null;
@@ -47,6 +55,7 @@ function renderLecturerResult(payload) {
         <h3>${escapeHtml(lecturer.name || "Unnamed lecturer")}</h3>
         <p class="muted">${escapeHtml(lecturer.uid || "")} · ${escapeHtml(lecturer.title || "Title not provided")}</p>
       </div>
+      <button type="button" class="assign-advisor" data-lecturer-uid="${escapeHtml(lecturer.uid || lecturerUidInput.value.trim())}">Choose as my advisor</button>
       <span class="status">${escapeHtml(lecturer.schoolName || "School not provided")}</span>
     </div>
     <dl class="profile-details">
@@ -63,6 +72,32 @@ function renderLecturerResult(payload) {
     `).join("")}</div>` : '<p class="empty">No reviews provided.</p>'}
   `;
 }
+
+lecturerResult.addEventListener("click", async (event) => {
+  const button = event.target.closest(".assign-advisor");
+  if (!button) return;
+  button.disabled = true;
+  button.textContent = "Assigning...";
+  try {
+    const response = await fetch("/api/student/advisor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lecturerUid: button.dataset.lecturerUid })
+    });
+    const data = await response.json();
+    if (response.status === 401) return showLoggedOut("Your session has expired. Please sign in again.");
+    if (!response.ok) throw new Error(data.error || "Could not assign advisor");
+    button.textContent = "Advisor assigned";
+    button.classList.add("assigned");
+    await loadStudentAdvisor();
+    showMessage(`Advisor assigned: ${data.advisorEmail}. Your request will be sent to this advisor.`, "success");
+    await loadAvailability();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Choose as my advisor";
+    showMessage(error.message, "error");
+  }
+});
 
 lecturerLookupForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -239,6 +274,12 @@ statusFilter.addEventListener("change", loadAdvisorRequests);
 document.querySelector("#advisor-refresh").addEventListener("click", () => loadAdvisorRequests({ notify: false }));
 
 async function loadAvailability() {
+  if (!dateInput.value) {
+    timeInput.disabled = true;
+    timeInput.innerHTML = '<option value="">Select a date first</option>';
+    availabilityMessage.textContent = "Choose a date to load suggested request times.";
+    return;
+  }
   timeInput.disabled = true;
   timeInput.innerHTML = '<option value="">Loading available slots...</option>';
   availabilityMessage.textContent = "";
@@ -252,10 +293,30 @@ async function loadAvailability() {
       ? '<option value="">Select an available slot</option>' + slots.map((slot) => `<option value="${escapeHtml(slot.time)}">${escapeHtml(slot.time)}</option>`).join("")
       : '<option value="">No available slots</option>';
     timeInput.disabled = !slots.length;
-    availabilityMessage.textContent = data.fallback ? "Demo availability is shown because partner availability is not configured." : "Availability supplied by Campus Insights.";
+    availabilityMessage.textContent = data.fallback
+      ? "These are suggested request times. Your request will be sent as pending; the advisor will confirm the time."
+      : "Availability supplied by Campus Insights.";
   } catch (error) {
     timeInput.innerHTML = '<option value="">Availability unavailable</option>';
     availabilityMessage.textContent = error.message;
+  }
+}
+
+async function loadStudentAdvisor() {
+  assignedAdvisor.innerHTML = '<h2>Your advisor</h2><p class="empty">Loading advisor assignment...</p>';
+  try {
+    const response = await fetch("/api/student/advisor");
+    const data = await response.json();
+    if (response.status === 401) return showLoggedOut("Your session has expired. Please sign in again.");
+    if (response.status === 503 && !data.advisorEmail) {
+      assignedAdvisor.innerHTML = '<h2>Your advisor</h2><p class="empty">No advisor assigned yet. Find a lecturer above and choose them as your advisor.</p>';
+      return;
+    }
+    if (!response.ok) throw new Error(data.error || "Could not load advisor assignment");
+    const profile = data.profile?.data?.data || data.profile?.data || {};
+    assignedAdvisor.innerHTML = `<h2>Your advisor</h2><p><strong>${escapeHtml(profile.name || data.advisorEmail)}</strong></p><p>${escapeHtml(data.advisorEmail)}</p>${profile.department ? `<p class="muted">${escapeHtml(profile.department)}</p>` : ""}`;
+  } catch (error) {
+    assignedAdvisor.innerHTML = `<h2>Your advisor</h2><p class="error">${escapeHtml(error.message)}</p>`;
   }
 }
 
@@ -278,7 +339,7 @@ form.addEventListener("submit", async (event) => {
     if (response.status === 401) return showLoggedOut("Your session has expired. Please sign in again.");
     if (!response.ok) throw new Error(data.error || "Could not submit request");
     form.reset();
-    showMessage("Request submitted successfully.", "success");
+    showMessage(`Request submitted with pending status${data.advisor_email ? ` for ${data.advisor_email}` : ""}.`, "success");
     await loadRequests();
   } catch (error) {
     showMessage(error.message, "error");
@@ -287,6 +348,8 @@ form.addEventListener("submit", async (event) => {
 
 function showLoggedOut(text = "") {
   currentUser = null;
+  advisorMode = false;
+  registerMode = false;
   advisorRequestIds = null;
   if (advisorPollingTimer) clearInterval(advisorPollingTimer);
   advisorPollingTimer = null;
@@ -296,6 +359,7 @@ function showLoggedOut(text = "") {
   studentPartnerData.classList.add("hidden");
   document.querySelector("header .eyebrow").textContent = "Student portal";
   document.querySelector("header .intro").textContent = "Sign in to view and submit your advising requests.";
+  updateAuthMode();
   if (text) showMessage(text, "error");
 }
 
@@ -315,9 +379,12 @@ function showLoggedIn(user) {
   studentContent.classList.toggle("hidden", isAdvisor);
   studentPartnerData.classList.toggle("hidden", isAdvisor);
   advisorPanel.classList.toggle("hidden", !isAdvisor);
+  updateAuthMode();
   if (isAdvisor) loadAdvisorRequests();
   else {
+    loadStudentAdvisor();
     loadRequests();
+    if (dateInput.value) loadAvailability();
   }
   if (advisorPollingTimer) clearInterval(advisorPollingTimer);
   advisorPollingTimer = isAdvisor
@@ -326,34 +393,75 @@ function showLoggedIn(user) {
 }
 
 function updateAuthMode() {
-  authTitle.textContent = registerMode ? "Create account" : "Sign in";
+  authTitle.textContent = advisorSetupMode ? "Set up advisor password" : advisorMode ? "Advisor sign in" : registerMode ? "Create account" : "Sign in";
   authDescription.textContent = registerMode
     ? "Create a student account to submit and track advising requests."
+    : advisorSetupMode ? "Choose a personal password for your active mock lecturer account."
+      : advisorMode ? "Sign in with your lecturer email and password."
     : "Sign in to view and submit your advising requests.";
-  authToggle.textContent = registerMode ? "Use existing account" : "Create account";
-  authSubmit.textContent = registerMode ? "Register" : "Sign in";
-  nameField.classList.toggle("hidden", !registerMode);
-  confirmPasswordField.classList.toggle("hidden", !registerMode);
-  nameInput.required = registerMode;
-  confirmPasswordInput.required = registerMode;
-  passwordInput.autocomplete = registerMode ? "new-password" : "current-password";
+  authToggle.textContent = registerMode ? "Back to sign in" : "Create account";
+  authToggle.classList.toggle("hidden", advisorMode || advisorSetupMode);
+  authSubmit.textContent = advisorSetupMode ? "Set password and continue" : advisorMode ? "Sign in to advisor dashboard" : registerMode ? "Register" : "Sign in";
+  nameField.classList.toggle("hidden", !registerMode || advisorMode);
+  confirmPasswordField.classList.toggle("hidden", !registerMode && !advisorSetupMode);
+  passwordInput.closest(".password-field").classList.remove("hidden");
+  passwordInput.closest(".password-field").previousElementSibling.classList.remove("hidden");
+  nameInput.required = registerMode && !advisorMode;
+  confirmPasswordInput.required = (registerMode && !advisorMode) || advisorSetupMode;
+  passwordInput.required = true;
+  passwordInput.autocomplete = registerMode || advisorSetupMode ? "new-password" : "current-password";
+  authRoleSwitch.classList.toggle("hidden", registerMode || advisorSetupMode);
+  studentModeToggle.classList.toggle("active", !advisorMode);
+  studentModeToggle.setAttribute("aria-pressed", String(!advisorMode));
+  advisorModeToggle.classList.toggle("active", advisorMode);
+  advisorModeToggle.setAttribute("aria-pressed", String(advisorMode));
+  advisorSetupToggle.classList.toggle("hidden", !advisorMode);
+  advisorSetupToggle.textContent = advisorSetupMode ? "Back to advisor sign in" : "First time here? Set up your advisor password";
+  advisorDemoNote.classList.toggle("hidden", !advisorSetupMode);
 }
 
 authToggle.addEventListener("click", () => {
+  advisorMode = false;
+  advisorSetupMode = false;
   registerMode = !registerMode;
+  authForm.reset();
+  updateAuthMode();
+});
+
+studentModeToggle.addEventListener("click", () => {
+  advisorMode = false;
+  advisorSetupMode = false;
+  registerMode = false;
+  authForm.reset();
+  updateAuthMode();
+});
+
+advisorModeToggle.addEventListener("click", () => {
+  advisorMode = true;
+  advisorSetupMode = false;
+  registerMode = false;
+  authForm.reset();
+  updateAuthMode();
+});
+
+advisorSetupToggle.addEventListener("click", () => {
+  advisorSetupMode = !advisorSetupMode;
   authForm.reset();
   updateAuthMode();
 });
 
 authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  showMessage(registerMode ? "Creating account..." : "Signing in...");
-  const endpoint = registerMode ? "/api/auth/register" : "/api/auth/login";
-  const body = registerMode
+  authSubmit.disabled = true;
+  showMessage(advisorSetupMode ? "Setting up advisor password..." : advisorMode ? "Checking lecturer access..." : registerMode ? "Creating account..." : "Signing in...");
+  const endpoint = advisorSetupMode ? "/api/auth/advisor-setup" : advisorMode ? "/api/auth/advisor-login" : registerMode ? "/api/auth/register" : "/api/auth/login";
+  const body = advisorMode
+    ? { email: emailInput.value.trim(), password: passwordInput.value }
+    : registerMode
     ? { name: nameInput.value.trim(), email: emailInput.value.trim(), password: passwordInput.value }
     : { email: emailInput.value.trim(), password: passwordInput.value };
   try {
-    if (registerMode && passwordInput.value !== confirmPasswordInput.value) {
+    if ((registerMode || advisorSetupMode) && passwordInput.value !== confirmPasswordInput.value) {
       throw new Error("Passwords do not match");
     }
     const response = await fetch(endpoint, {
@@ -367,6 +475,8 @@ authForm.addEventListener("submit", async (event) => {
     showLoggedIn(data.user);
   } catch (error) {
     showMessage(error.message, "error");
+  } finally {
+    authSubmit.disabled = false;
   }
 });
 

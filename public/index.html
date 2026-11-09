@@ -9,8 +9,13 @@
 <body>
   <main class="shell">
     <header>
-      <p class="eyebrow">Student portal</p>
-      <h1>Advising Platform</h1>
+      <div class="brand-row">
+        <div class="brand-mark" aria-hidden="true">A</div>
+        <div>
+          <p class="eyebrow">Mae Fah Luang University</p>
+          <h1>Advising Platform</h1>
+        </div>
+      </div>
       <p class="intro">Sign in to view and submit your advising requests.</p>
       <nav id="user-bar" class="user-bar card hidden" aria-label="Account">
         <div>
@@ -61,6 +66,10 @@
         <button id="auth-toggle" class="secondary" type="button">Create account</button>
       </div>
       <p id="auth-description">Sign in to view and submit your advising requests.</p>
+      <div id="auth-role-switch" class="auth-role-switch" role="group" aria-label="Account type">
+        <button id="student-mode-toggle" class="role-tab active" type="button" aria-pressed="true">Student</button>
+        <button id="advisor-mode-toggle" class="role-tab" type="button" aria-pressed="false">Advisor</button>
+      </div>
       <form id="auth-form">
         <div id="name-field" class="hidden">
           <label for="name">Name</label>
@@ -84,6 +93,8 @@
             </button>
           </div>
         </div>
+        <button id="advisor-setup-toggle" class="auth-inline-link hidden" type="button">First time here? Set up your advisor password</button>
+        <p id="advisor-demo-note" class="demo-note hidden">Use your mock lecturer email and choose an individual password.</p>
         <button id="auth-submit" type="submit">Sign in</button>
       </form>
     </section>
@@ -92,6 +103,10 @@
 
     <section id="app-panel" class="hidden">
       <section class="grid">
+        <section id="assigned-advisor" class="card assigned-advisor" aria-live="polite">
+          <h2>Your advisor</h2>
+          <p class="empty">Checking your advisor assignment...</p>
+        </section>
         <form id="request-form" class="card">
         <h2>Request advising</h2>
         <label for="agenda">Agenda</label>

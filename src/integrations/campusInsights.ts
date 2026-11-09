@@ -14,6 +14,8 @@ export type CampusInsightsConfig = {
 
 type IntegrationResult = { status: number; body: Record<string, unknown> };
 type EndpointName = "availability" | "ratings" | "topics" | "booking statistics";
+const DEFAULT_CAMPUS_INSIGHTS_BASE_URL = "https://campus-insights-k88b.onrender.com";
+const DEFAULT_LECTURER_UID_PATH = "/api/v1/lecturers/{uid}";
 
 function endpointFor(config: CampusInsightsConfig, name: EndpointName): string | undefined {
   return {
@@ -32,7 +34,7 @@ export class CampusInsightsClient {
   constructor(private readonly config: CampusInsightsConfig) {}
 
   private apiKey(): string | undefined {
-    return this.config.ADVISING_PLATFORM_SECRET_KEY ?? this.config.CAMPUS_INSIGHTS_API_KEY;
+    return this.config.CAMPUS_INSIGHTS_API_KEY ?? this.config.ADVISING_PLATFORM_SECRET_KEY;
   }
 
   async getLecturerByEmail(email: string): Promise<IntegrationResult> {
@@ -63,13 +65,10 @@ export class CampusInsightsClient {
     if (!apiKey) {
       return { status: 503, body: { success: false, source: "campus-insights", fallback: true, error: "Campus Insights API key is not configured" } };
     }
+    const baseUrl = this.config.CAMPUS_INSIGHTS_BASE_URL ?? DEFAULT_CAMPUS_INSIGHTS_BASE_URL;
+    const lecturerPath = this.config.CAMPUS_INSIGHTS_LECTURER_PATH ?? DEFAULT_LECTURER_UID_PATH;
     const endpoint = this.config.CAMPUS_INSIGHTS_LECTURER_BY_UID_URL
-      ?? (this.config.CAMPUS_INSIGHTS_BASE_URL && this.config.CAMPUS_INSIGHTS_LECTURER_PATH
-        ? new URL(this.config.CAMPUS_INSIGHTS_LECTURER_PATH.replace("{uid}", encodeURIComponent(uid)), this.config.CAMPUS_INSIGHTS_BASE_URL).toString()
-        : undefined);
-    if (!endpoint) {
-      return { status: 503, body: { success: false, source: "campus-insights", fallback: true, error: "Campus Insights lecturer UID endpoint is not configured" } };
-    }
+      ?? new URL(lecturerPath.replace("{uid}", encodeURIComponent(uid)), baseUrl).toString();
     return this.fetchPartner(endpoint.replace("{uid}", encodeURIComponent(uid)), { "x-api-key": apiKey });
   }
 
@@ -85,18 +84,37 @@ export class CampusInsightsClient {
   }
 
   private async fetchPartner(url: string, headers: HeadersInit = {}): Promise<IntegrationResult> {
+    const target = new URL(url);
+    const targetSummary = { host: target.host, path: target.pathname };
     try {
       const response = await fetch(url, { headers: { Accept: "application/json", ...headers }, signal: AbortSignal.timeout(8_000) });
       const text = await response.text();
       if (text.length > 1_000_000) {
+        console.warn("[campus-insights] upstream response exceeded size limit", {
+          ...targetSummary,
+          status: response.status,
+          contentType: response.headers.get("content-type"),
+        });
         return { status: 502, body: { success: false, source: "campus-insights", fallback: true, error: "Campus Insights response was too large" } };
       }
       let partnerResponse: unknown = text;
       try { partnerResponse = JSON.parse(text); } catch { /* Preserve a non-JSON response. */ }
-      if (!response.ok) return { status: response.status === 429 ? 429 : 502, body: { success: false, source: "campus-insights", fallback: true, error: response.status === 429 ? "Campus Insights rate limit exceeded" : "Campus Insights returned a non-success response", partnerStatus: response.status, partnerResponse } };
+      if (!response.ok) {
+        console.warn("[campus-insights] upstream returned non-success status", {
+          ...targetSummary,
+          status: response.status,
+          contentType: response.headers.get("content-type"),
+        });
+        return { status: response.status === 429 ? 429 : 502, body: { success: false, source: "campus-insights", fallback: true, error: response.status === 429 ? "Campus Insights rate limit exceeded" : "Campus Insights returned a non-success response", partnerStatus: response.status, partnerResponse } };
+      }
       return { status: 200, body: { success: true, source: "campus-insights", partnerStatus: response.status, data: partnerResponse } };
     } catch (error) {
       const timedOut = error instanceof Error && error.name === "TimeoutError";
+      console.warn("[campus-insights] upstream request failed", {
+        ...targetSummary,
+        error: error instanceof Error ? error.name : "UnknownError",
+        timedOut,
+      });
       return { status: timedOut ? 504 : 502, body: { success: false, source: "campus-insights", fallback: true, error: timedOut ? "Campus Insights request timed out" : "Campus Insights request failed" } };
     }
   }
