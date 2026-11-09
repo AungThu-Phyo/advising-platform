@@ -67,8 +67,12 @@ export class CampusInsightsClient {
     }
     const baseUrl = this.config.CAMPUS_INSIGHTS_BASE_URL ?? DEFAULT_CAMPUS_INSIGHTS_BASE_URL;
     const lecturerPath = this.config.CAMPUS_INSIGHTS_LECTURER_PATH ?? DEFAULT_LECTURER_UID_PATH;
-    const endpoint = this.config.CAMPUS_INSIGHTS_LECTURER_BY_UID_URL
-      ?? new URL(lecturerPath.replace("{uid}", encodeURIComponent(uid)), baseUrl).toString();
+    // Prefer the confirmed base URL + path over a legacy full-URL secret, which
+    // may still point at a retired partner endpoint.
+    const endpoint = this.config.CAMPUS_INSIGHTS_BASE_URL || this.config.CAMPUS_INSIGHTS_LECTURER_PATH
+      ? new URL(lecturerPath.replace("{uid}", encodeURIComponent(uid)), baseUrl).toString()
+      : this.config.CAMPUS_INSIGHTS_LECTURER_BY_UID_URL?.replace("{uid}", encodeURIComponent(uid))
+        ?? new URL(DEFAULT_LECTURER_UID_PATH.replace("{uid}", encodeURIComponent(uid)), DEFAULT_CAMPUS_INSIGHTS_BASE_URL).toString();
     return this.fetchPartner(endpoint.replace("{uid}", encodeURIComponent(uid)), { "x-api-key": apiKey });
   }
 
