@@ -279,6 +279,43 @@ app.post("/api/auth/logout", async (c) => {
   return new Response(null, { status: 204, headers: { "Set-Cookie": sessionCookie("", 0) } });
 });
 
+app.get("/api/advisor/dashboard", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
+  if (user.role !== "ADVISOR") return c.json({ error: "Advisor access required" }, 403);
+  const profile = await c.env.advising_db.prepare(
+    "SELECT uid, name, email, department, office, title, school_id, school_name FROM lecturer_profiles WHERE LOWER(TRIM(email)) = LOWER(?) AND is_active = 1",
+  ).bind(user.email).first();
+  if (!profile) return c.json({ error: "Active lecturer profile not found" }, 404);
+  const stats = await c.env.advising_db.prepare(`
+    SELECT COUNT(*) AS total,
+      COALESCE(SUM(CASE WHEN advising_requests.status = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+      COALESCE(SUM(CASE WHEN advising_requests.status = 'approved' THEN 1 ELSE 0 END), 0) AS approved,
+      COALESCE(SUM(CASE WHEN advising_requests.status = 'rejected' THEN 1 ELSE 0 END), 0) AS declined
+    FROM advising_requests LEFT JOIN users ON users.id = advising_requests.student_id
+    WHERE LOWER(COALESCE(advising_requests.advisor_email, users.advisor_email)) = LOWER(?)
+  `).bind(user.email).first();
+  const weeklyAvailability = await c.env.advising_db.prepare(
+    "SELECT id, day_of_week, start_time, end_time, timezone FROM lecturer_weekly_availability WHERE lecturer_uid = ? ORDER BY day_of_week, start_time",
+  ).bind(profile.uid).all();
+  return c.json({ success: true, profile, stats, weeklyAvailability: weeklyAvailability.results ?? [] });
+});
+
+app.patch("/api/advisor/profile", async (c) => {
+  const user = await requireAuth(c); if (user instanceof Response) return user;
+  if (user.role !== "ADVISOR") return c.json({ error: "Advisor access required" }, 403);
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  const name = typeof parsed.body?.name === "string" ? parsed.body.name.trim() : "";
+  const department = typeof parsed.body?.department === "string" ? parsed.body.department.trim() : "";
+  const office = typeof parsed.body?.office === "string" ? parsed.body.office.trim() : "";
+  if (!isNonEmptyString(name)) return c.json({ error: "Display name is required" }, 400);
+  const result = await c.env.advising_db.prepare(`
+    UPDATE lecturer_profiles SET name = ?, department = ?, office = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE LOWER(TRIM(email)) = LOWER(?) AND is_active = 1
+    RETURNING uid, name, email, department, office, title, school_id, school_name
+  `).bind(name, department || null, office || null, user.email).first();
+  return result ? c.json({ success: true, profile: result }) : c.json({ error: "Active lecturer profile not found" }, 404);
+});
+
 app.get("/api/student/advisor", async (c) => {
   const user = await requireAuth(c); if (user instanceof Response) return user;
   if (user.role !== "STUDENT") return c.json({ error: "This endpoint is for students" }, 403);
@@ -311,6 +348,20 @@ app.get("/api/student/advisor/availability", async (c) => {
   if (!user.advisor_email) return c.json({ error: "No advisor is assigned to this student" }, 503);
   const date = c.req.query("date");
   if (!isNonEmptyString(date)) return c.json({ error: "date query parameter is required" }, 400);
+  const scheduledAdvisor = await c.env.advising_db.prepare(
+    "SELECT uid FROM lecturer_profiles WHERE LOWER(TRIM(email)) = LOWER(?) AND is_active = 1",
+  ).bind(user.advisor_email).first<{ uid: string }>();
+  if (scheduledAdvisor) {
+    const scheduledSlots = await generateLecturerSlots(c.env.advising_db, scheduledAdvisor.uid, date, 60);
+    if (scheduledSlots.length) return c.json({
+      success: true,
+      source: "advisor-schedule",
+      fallback: false,
+      advisorEmail: user.advisor_email,
+      date,
+      slots: scheduledSlots.map((slot) => ({ date: slot.date, time: `${slot.startTime}-${slot.endTime}` })),
+    });
+  }
   const advisor = await client(c).getLecturerByEmail(user.advisor_email);
   const partnerId = (advisor.body.data as { data?: { id?: string }; id?: string } | undefined)?.data?.id
     ?? (advisor.body.data as { id?: string } | undefined)?.id;

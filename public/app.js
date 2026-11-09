@@ -1,5 +1,10 @@
 const authPanel = document.querySelector("#auth-panel");
 const appPanel = document.querySelector("#app-panel");
+const authHero = document.querySelector("#auth-hero");
+const headerIntro = document.querySelector("#header-intro");
+const themeToggle = document.querySelector("#theme-toggle");
+const platformDetails = document.querySelector("#platform-details");
+const explorePlatform = document.querySelector("#explore-platform");
 const authForm = document.querySelector("#auth-form");
 const authTitle = document.querySelector("#auth-title");
 const authDescription = document.querySelector("#auth-description");
@@ -29,6 +34,17 @@ const advisorPanel = document.querySelector("#advisor-panel");
 const advisorRequests = document.querySelector("#advisor-requests");
 const statusFilter = document.querySelector("#status-filter");
 const advisorNotification = document.querySelector("#advisor-notification");
+const advisorStats = document.querySelector("#advisor-stats");
+const availabilityChart = document.querySelector("#availability-chart");
+const weeklyHoursLabel = document.querySelector("#weekly-hours");
+const weeklyAvailabilityForm = document.querySelector("#weekly-availability-form");
+const advisorProfileForm = document.querySelector("#advisor-profile-form");
+const advisorProfileName = document.querySelector("#advisor-profile-name");
+const advisorProfileEmail = document.querySelector("#advisor-profile-email");
+const advisorProfileDepartment = document.querySelector("#advisor-profile-department");
+const advisorProfileOffice = document.querySelector("#advisor-profile-office");
+const advisorFirstName = document.querySelector("#advisor-first-name");
+const userAvatar = document.querySelector("#user-avatar");
 const form = document.querySelector("#request-form");
 const requests = document.querySelector("#requests");
 const message = document.querySelector("#message");
@@ -43,6 +59,34 @@ let advisorSetupMode = false;
 let currentUser = null;
 let advisorRequestIds = null;
 let advisorPollingTimer = null;
+let advisorProfile = null;
+
+const UI_ICONS = {
+  requests: '<svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v16H5V5a2 2 0 0 1 2-2Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+  pending: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  approved: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>',
+  hours: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h3M8 17h7"/></svg>',
+  declined: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>',
+};
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("campus-advising-theme", theme);
+  const dark = theme === "dark";
+  themeToggle.setAttribute("aria-label", `Switch to ${dark ? "light" : "dark"} theme`);
+  themeToggle.innerHTML = dark
+    ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>'
+    : '<svg viewBox="0 0 24 24"><path d="M20.5 15.2A8.7 8.7 0 0 1 8.8 3.5 8.8 8.8 0 1 0 20.5 15.2Z"/></svg>';
+}
+
+setTheme(localStorage.getItem("campus-advising-theme") === "dark" ? "dark" : "light");
+themeToggle.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+explorePlatform.addEventListener("click", () => {
+  const expanded = explorePlatform.getAttribute("aria-expanded") === "true";
+  explorePlatform.setAttribute("aria-expanded", String(!expanded));
+  platformDetails.classList.toggle("hidden", expanded);
+  explorePlatform.innerHTML = expanded ? 'Explore how it works <span>→</span>' : 'Close overview <span>↑</span>';
+});
 
 function renderLecturerResult(payload) {
   const lecturer = payload?.data?.data || payload?.data || {};
@@ -254,6 +298,139 @@ async function loadAdvisorRequests({ notify = true } = {}) {
   }
 }
 
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function durationHours(slot) {
+  const [startHour, startMinute] = slot.start_time.split(":").map(Number);
+  const [endHour, endMinute] = slot.end_time.split(":").map(Number);
+  return (endHour * 60 + endMinute - startHour * 60 - startMinute) / 60;
+}
+
+function renderAvailabilityChart(slots) {
+  const byDay = WEEKDAY_NAMES.map((name, day) => ({
+    name,
+    slots: slots.filter((slot) => Number(slot.day_of_week) === day),
+  }));
+  const totals = byDay.map((day) => day.slots.reduce((sum, slot) => sum + durationHours(slot), 0));
+  const maxHours = Math.max(4, ...totals);
+  const totalHours = totals.reduce((sum, hours) => sum + hours, 0);
+  weeklyHoursLabel.textContent = `${totalHours.toFixed(1).replace(/\.0$/, "")} hrs / week`;
+  availabilityChart.innerHTML = slots.length ? byDay.map((day, index) => {
+    const hours = totals[index];
+    const ranges = day.slots.map((slot) => `${escapeHtml(slot.start_time)}–${escapeHtml(slot.end_time)}`).join(", ");
+    return `<div class="availability-row">
+      <span class="availability-day">${day.name.slice(0, 3)}</span>
+      <div class="availability-track" role="img" aria-label="${day.name}: ${hours.toFixed(1)} free hours">
+        <span class="availability-bar" style="--bar-width:${Math.max(0, Math.min(100, hours / maxHours * 100))}%"></span>
+      </div>
+      <span class="availability-hours">${hours ? `${hours.toFixed(1).replace(/\.0$/, "")}h` : "—"}</span>
+      ${day.slots.length ? `<div class="availability-ranges">${ranges}</div><div class="availability-remove-list">${day.slots.map((slot) => `<button type="button" class="remove-availability" data-slot-id="${Number(slot.id)}" aria-label="Remove ${day.name} ${escapeHtml(slot.start_time)} to ${escapeHtml(slot.end_time)}">Remove</button>`).join("")}</div>` : '<div class="availability-ranges empty">No free time</div>'}
+    </div>`;
+  }).join("") : '<p class="empty chart-empty">No weekly free time set yet. Add a recurring time below to let students request a meeting.</p>';
+}
+
+async function loadAdvisorDashboard() {
+  try {
+    const response = await fetch("/api/advisor/dashboard");
+    const data = await response.json();
+    if (response.status === 401) return showLoggedOut("Your session has expired. Please sign in again.");
+    if (!response.ok) throw new Error(data.error || "Could not load advisor dashboard");
+    advisorProfile = data.profile;
+    advisorProfileName.value = advisorProfile.name || "";
+    advisorProfileEmail.value = advisorProfile.email || "";
+    advisorProfileDepartment.value = advisorProfile.department || "";
+    advisorProfileOffice.value = advisorProfile.office || "";
+    const firstName = (advisorProfile.name || "Advisor").replace(/^(Dr\.?|Ms\.?|Mr\.?|Mrs\.?)\s+/i, "").split(/\s+/)[0];
+    advisorFirstName.textContent = firstName;
+    userName.textContent = advisorProfile.name || currentUser?.name || "Advisor";
+    userAvatar.textContent = (advisorProfile.name || currentUser?.name || "A").trim().slice(0, 1).toUpperCase();
+
+    const stats = data.stats || {};
+    const weeklyHours = (data.weeklyAvailability || []).reduce((sum, slot) => sum + durationHours(slot), 0);
+    const cards = [
+      ["requests", "Total requests", stats.total ?? 0],
+      ["pending", "Needs review", stats.pending ?? 0],
+      ["approved", "Approved", stats.approved ?? 0],
+      ["declined", "Declined", stats.declined ?? 0],
+      ["hours", "Free hours / week", `${weeklyHours.toFixed(1).replace(/\.0$/, "")}h`],
+    ];
+    advisorStats.innerHTML = cards.map(([iconName, label, value]) => `<article class="stat-card">
+      <span class="stat-icon">${UI_ICONS[iconName]}</span><span class="stat-label">${label}</span><strong>${escapeHtml(value)}</strong>
+    </article>`).join("");
+    renderAvailabilityChart(data.weeklyAvailability || []);
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+}
+
+weeklyAvailabilityForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!advisorProfile) return;
+  const submit = weeklyAvailabilityForm.querySelector("button[type=submit]");
+  submit.disabled = true;
+  try {
+    const response = await fetch(`/api/lecturers/${encodeURIComponent(advisorProfile.uid)}/availability/weekly`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        schoolId: advisorProfile.school_id,
+        dayOfWeek: Number(document.querySelector("#availability-day").value),
+        startTime: document.querySelector("#availability-start").value,
+        endTime: document.querySelector("#availability-end").value,
+        timezone: "Asia/Bangkok",
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not add free time");
+    showMessage("Weekly free time added.", "success");
+    await loadAdvisorDashboard();
+  } catch (error) {
+    showMessage(error.message, "error");
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+availabilityChart.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-slot-id]");
+  if (!button || !advisorProfile) return;
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/lecturers/${encodeURIComponent(advisorProfile.uid)}/availability/weekly/${button.dataset.slotId}`, { method: "DELETE" });
+    const data = response.status === 204 ? {} : await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not remove free time");
+    await loadAdvisorDashboard();
+  } catch (error) {
+    button.disabled = false;
+    showMessage(error.message, "error");
+  }
+});
+
+advisorProfileForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = advisorProfileForm.querySelector("button[type=submit]");
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/advisor/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: advisorProfileName.value.trim(),
+        department: advisorProfileDepartment.value.trim(),
+        office: advisorProfileOffice.value.trim(),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not save profile");
+    showMessage("Profile settings saved.", "success");
+    await loadAdvisorDashboard();
+  } catch (error) {
+    showMessage(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+});
+
 advisorRequests.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-decision]");
   if (!button) return;
@@ -268,6 +445,7 @@ advisorRequests.addEventListener("click", async (event) => {
   if (!response.ok) return showMessage(data.error || "Could not save decision", "error");
   showMessage("Decision saved.", "success");
   await loadAdvisorRequests({ notify: false });
+    await loadAdvisorDashboard();
 });
 
 statusFilter.addEventListener("change", loadAdvisorRequests);
@@ -348,17 +526,19 @@ form.addEventListener("submit", async (event) => {
 
 function showLoggedOut(text = "") {
   currentUser = null;
+  advisorProfile = null;
   advisorMode = false;
+  advisorSetupMode = false;
   registerMode = false;
   advisorRequestIds = null;
   if (advisorPollingTimer) clearInterval(advisorPollingTimer);
   advisorPollingTimer = null;
   authPanel.classList.remove("hidden");
+  authHero.classList.remove("hidden");
   appPanel.classList.add("hidden");
   userBar.classList.add("hidden");
+  headerIntro.classList.add("hidden");
   studentPartnerData.classList.add("hidden");
-  document.querySelector("header .eyebrow").textContent = "Student portal";
-  document.querySelector("header .intro").textContent = "Sign in to view and submit your advising requests.";
   updateAuthMode();
   if (text) showMessage(text, "error");
 }
@@ -368,19 +548,24 @@ function showLoggedIn(user) {
   advisorRequestIds = null;
   advisorNotification.classList.add("hidden");
   authPanel.classList.add("hidden");
+  authHero.classList.add("hidden");
   appPanel.classList.remove("hidden");
   userBar.classList.remove("hidden");
+  headerIntro.classList.remove("hidden");
   userName.textContent = user.name;
   userEmail.textContent = user.email;
+  userAvatar.textContent = (user.name || user.email || "A").trim().slice(0, 1).toUpperCase();
   showMessage("");
   const isAdvisor = user.role === "ADVISOR" || user.role === "ADMIN";
-  document.querySelector("header .eyebrow").textContent = isAdvisor ? "Advisor portal" : "Student portal";
-  document.querySelector("header .intro").textContent = isAdvisor ? "Review and decide advising requests." : "Submit an advising request and track your requests.";
+  headerIntro.textContent = isAdvisor ? "Your advisor workspace" : "Your student advising workspace";
   studentContent.classList.toggle("hidden", isAdvisor);
   studentPartnerData.classList.toggle("hidden", isAdvisor);
   advisorPanel.classList.toggle("hidden", !isAdvisor);
   updateAuthMode();
-  if (isAdvisor) loadAdvisorRequests();
+  if (isAdvisor) {
+    loadAdvisorDashboard();
+    loadAdvisorRequests();
+  }
   else {
     loadStudentAdvisor();
     loadRequests();
@@ -388,7 +573,7 @@ function showLoggedIn(user) {
   }
   if (advisorPollingTimer) clearInterval(advisorPollingTimer);
   advisorPollingTimer = isAdvisor
-    ? setInterval(() => loadAdvisorRequests(), 10000)
+    ? setInterval(() => { loadAdvisorRequests(); loadAdvisorDashboard(); }, 20000)
     : null;
 }
 

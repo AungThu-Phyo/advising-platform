@@ -8,21 +8,25 @@
 </head>
 <body>
   <main class="shell">
-    <header>
+    <header class="site-header">
       <div class="brand-row">
-        <div class="brand-mark" aria-hidden="true">A</div>
+        <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 9 12 4l9 5-9 5-9-5Z"/><path d="M6 11v5c3.8 2.8 8.2 2.8 12 0v-5M21 9v7"/></svg></div>
         <div>
           <p class="eyebrow">Mae Fah Luang University</p>
-          <h1>Advising Platform</h1>
+          <h1>Campus Advising</h1>
         </div>
       </div>
-      <p class="intro">Sign in to view and submit your advising requests.</p>
+      <div class="header-actions">
+        <span class="community-pill"><svg viewBox="0 0 24 24"><path d="m3 9 9-5 9 5-9 5-9-5Z"/><path d="M6 11v5c4 3 8 3 12 0v-5"/></svg>For the MFU community</span>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to dark theme" title="Switch theme"><svg viewBox="0 0 24 24"><path d="M20.5 15.2A8.7 8.7 0 0 1 8.8 3.5 8.8 8.8 0 1 0 20.5 15.2Z"/></svg></button>
+      </div>
+      <p id="header-intro" class="intro header-intro hidden">Your advising workspace.</p>
       <nav id="user-bar" class="user-bar card hidden" aria-label="Account">
         <div>
-          <strong id="user-name"></strong>
-          <small id="user-email"></small>
+          <span class="user-avatar" id="user-avatar">A</span>
+          <span><strong id="user-name"></strong><small id="user-email"></small></span>
         </div>
-        <button id="logout" class="secondary" type="button">Sign out</button>
+        <button id="logout" class="secondary icon-button" type="button"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg>Sign out</button>
       </nav>
     </header>
 
@@ -59,6 +63,40 @@
         </div>
       </section>
     </div>
+
+    <section id="auth-hero" class="auth-hero">
+      <div class="campus-story">
+        <div class="story-copy">
+          <p class="story-kicker"><span></span> YOUR CAMPUS. YOUR NEXT STEP.</p>
+          <h2>Good guidance<br>moves you forward.</h2>
+          <p>Connect with the right lecturer, find a time to talk, and keep every advising conversation on track.</p>
+        </div>
+        <svg class="campus-illustration" viewBox="0 0 760 360" role="img" aria-label="Illustration of university buildings">
+          <path class="hill" d="M0 286 100 248l92 30 93-47 111 46 114-56 100 52 150-43v130H0Z"/>
+          <path class="walk" d="m297 342 49-105h72l50 105Z"/>
+          <g class="building">
+            <path d="m42 255 135-94 140 94v82H42Z"/><path class="roof" d="m24 258 153-114 160 114-20 11-140-98L45 269Z"/>
+            <path class="window" d="M77 250v70m28-87v99m36-115v115m40-103v103m37-90v90m37-73v73"/>
+            <path class="base" d="M42 337h275"/>
+          </g>
+          <g class="building center-building">
+            <path d="M280 224h200v113H280Z"/><path class="roof" d="m260 230 120-72 120 72v13H260Z"/>
+            <path class="window" d="M307 246v75m37-75v75m37-75v75m37-75v75m37-75v75"/><path class="base" d="M280 337h200"/>
+          </g>
+          <g class="building">
+            <path d="m450 255 140-94 135 94v82H450Z"/><path class="roof" d="m434 258 160-114 153 114-21 11-139-98-134 98Z"/>
+            <path class="window" d="M483 250v70m37-87v99m36-115v115m40-103v103m36-90v90m31-73v73"/><path class="base" d="M450 337h275"/>
+          </g>
+          <g class="tree"><path d="M117 323v-54m-17 54v-46m17-46c-22 0-31 28-17 41 10 9 28 4 30-10 3-17-13-31-13-31Zm-17 21c-13-1-22 13-16 23 7 12 25 8 26-5 1-9-4-17-10-18Z"/><path d="M649 323v-54m16 54v-46m-16-46c22 0 31 28 17 41-10 9-28 4-30-10-3-17 13-31 13-31Zm17 21c13-1 22 13 16 23-7 12-25 8-26-5-1-9 4-17 10-18Z"/></g>
+        </svg>
+        <div class="campus-base-row"><span>MAE FAH LUANG UNIVERSITY</span><span>ADVISING · CONNECTION · GROWTH</span></div>
+        <div id="platform-details" class="platform-details hidden">
+          <div><span class="step-icon">01</span><strong>Choose your advisor</strong><p>Explore the lecturer directory and find the right person to guide you.</p></div>
+          <div><span class="step-icon">02</span><strong>Request a conversation</strong><p>Share your topic and preferred time. Your request stays pending until reviewed.</p></div>
+          <div><span class="step-icon">03</span><strong>Stay on track</strong><p>Keep your advising history and next steps together in one place.</p></div>
+        </div>
+        <button id="explore-platform" class="story-link" type="button" aria-expanded="false">Explore how it works <span>→</span></button>
+      </div>
 
     <section id="auth-panel" class="card">
       <div class="section-heading">
@@ -98,6 +136,7 @@
         <button id="auth-submit" type="submit">Sign in</button>
       </form>
     </section>
+    </section>
 
     <div id="message" role="status" aria-live="polite"></div>
 
@@ -130,19 +169,47 @@
         </section>
       </section>
       <section id="advisor-panel" class="card hidden">
-        <div id="advisor-notification" class="notification hidden" role="status" aria-live="polite"></div>
-        <div class="section-heading">
-          <h2>Advisor requests</h2>
-          <button id="advisor-refresh" class="secondary" type="button">Refresh</button>
+        <div class="advisor-welcome">
+          <div><p class="eyebrow">ADVISOR WORKSPACE</p><h2>Good day, <span id="advisor-first-name">Advisor</span></h2><p>Manage your availability and help students move forward.</p></div>
+          <button id="advisor-refresh" class="secondary icon-button" type="button"><svg viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 11.9-2L20 12M4 12l2.6 5a7 7 0 0 0 11.9-2"/></svg>Refresh</button>
         </div>
-        <label for="status-filter">Filter by status</label>
-        <select id="status-filter">
-          <option value="">All requests</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-        </select>
-        <div id="advisor-requests" class="requests" aria-live="polite"></div>
+        <div id="advisor-notification" class="notification hidden" role="status" aria-live="polite"></div>
+        <div id="advisor-stats" class="stats-grid" aria-label="Advisor statistics"></div>
+        <div class="advisor-layout">
+          <div class="advisor-primary-column">
+            <section class="card subcard availability-card">
+              <div class="section-heading"><div><p class="eyebrow">YOUR SCHEDULE</p><h3>Weekly free time</h3></div><span class="quiet-badge" id="weekly-hours">0 hrs / week</span></div>
+              <p class="section-hint">Set recurring hours when students can request a meeting.</p>
+              <div id="availability-chart" class="availability-chart" aria-live="polite"></div>
+              <form id="weekly-availability-form" class="availability-form">
+                <label>Day<select id="availability-day" required>
+                  <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
+                </select></label>
+                <label>From<input id="availability-start" type="time" value="09:00" required></label>
+                <label>To<input id="availability-end" type="time" value="12:00" required></label>
+                <button type="submit" class="small-primary">Add free time</button>
+              </form>
+            </section>
+            <section class="card subcard advisor-requests-card">
+              <div class="section-heading"><div><p class="eyebrow">INBOX</p><h3>Student requests</h3></div>
+                <select id="status-filter" aria-label="Filter requests by status"><option value="">All requests</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Declined</option></select>
+              </div>
+              <div id="advisor-requests" class="requests" aria-live="polite"></div>
+            </section>
+          </div>
+          <aside class="advisor-side-column">
+            <section class="card subcard advisor-profile-card">
+              <div class="section-heading"><div><p class="eyebrow">YOUR PROFILE</p><h3>Profile settings</h3></div><span class="profile-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4 21c.5-4.1 3.2-6.2 8-6.2s7.5 2.1 8 6.2"/></svg></span></div>
+              <form id="advisor-profile-form">
+                <label for="advisor-profile-name">Display name</label><input id="advisor-profile-name" type="text" required>
+                <label for="advisor-profile-email">University email</label><input id="advisor-profile-email" type="email" readonly>
+                <label for="advisor-profile-department">Department</label><input id="advisor-profile-department" type="text">
+                <label for="advisor-profile-office">Office</label><input id="advisor-profile-office" type="text">
+                <button type="submit" class="secondary save-profile">Save profile</button>
+              </form>
+            </section>
+          </aside>
+        </div>
       </section>
     </section>
   </main>
