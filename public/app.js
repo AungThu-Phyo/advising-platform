@@ -13,6 +13,8 @@ const passwordInput = document.querySelector("#password");
 const confirmPasswordInput = document.querySelector("#confirm-password");
 const userName = document.querySelector("#user-name");
 const userEmail = document.querySelector("#user-email");
+const userBar = document.querySelector("#user-bar");
+const studentPartnerData = document.querySelector("#student-partner-data");
 const dateInput = document.querySelector("#date");
 const timeInput = document.querySelector("#time");
 const availabilityMessage = document.querySelector("#availability-message");
@@ -290,6 +292,10 @@ function showLoggedOut(text = "") {
   advisorPollingTimer = null;
   authPanel.classList.remove("hidden");
   appPanel.classList.add("hidden");
+  userBar.classList.add("hidden");
+  studentPartnerData.classList.add("hidden");
+  document.querySelector("header .eyebrow").textContent = "Student portal";
+  document.querySelector("header .intro").textContent = "Sign in to view and submit your advising requests.";
   if (text) showMessage(text, "error");
 }
 
@@ -299,6 +305,7 @@ function showLoggedIn(user) {
   advisorNotification.classList.add("hidden");
   authPanel.classList.add("hidden");
   appPanel.classList.remove("hidden");
+  userBar.classList.remove("hidden");
   userName.textContent = user.name;
   userEmail.textContent = user.email;
   showMessage("");
@@ -306,6 +313,7 @@ function showLoggedIn(user) {
   document.querySelector("header .eyebrow").textContent = isAdvisor ? "Advisor portal" : "Student portal";
   document.querySelector("header .intro").textContent = isAdvisor ? "Review and decide advising requests." : "Submit an advising request and track your requests.";
   studentContent.classList.toggle("hidden", isAdvisor);
+  studentPartnerData.classList.toggle("hidden", isAdvisor);
   advisorPanel.classList.toggle("hidden", !isAdvisor);
   if (isAdvisor) loadAdvisorRequests();
   else {
