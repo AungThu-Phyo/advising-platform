@@ -231,7 +231,7 @@ export async function generateLecturerSlots(
     ? (override.is_available ? [{ start_time: override.start_time!, end_time: override.end_time!, timezone: override.timezone }] : [])
     : (await db.prepare("SELECT start_time, end_time, timezone FROM lecturer_weekly_availability WHERE lecturer_uid = ? AND school_id = ? AND day_of_week = ? ORDER BY start_time").bind(lecturerUid, lecturer.school_id, dayOfWeek).all<{ start_time: string; end_time: string; timezone: string }>()).results ?? [];
   const advisor = lecturer.email
-    ? await db.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND role = 'ADVISOR' AND is_active = 1").bind(lecturer.email).first<{ id: string }>()
+    ? await db.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND role = 'ADVISOR'").bind(lecturer.email).first<{ id: string }>()
     : null;
   const booked = advisor
     ? (await db.prepare("SELECT starts_at, ends_at FROM advisor_slots WHERE advisor_id = ? AND status IN ('open', 'booked')").bind(advisor.id).all<{ starts_at: string; ends_at: string }>()).results ?? []

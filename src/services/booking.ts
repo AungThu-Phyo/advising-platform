@@ -72,7 +72,7 @@ export async function createSlot(
 
   const advisor = await db
     .prepare(
-      "SELECT id FROM users WHERE id = ? AND role IN ('advisor', 'ADVISOR') AND is_active = 1",
+      "SELECT id FROM users WHERE id = ? AND role IN ('advisor', 'ADVISOR')",
     )
     .bind(advisorId)
     .first<{ id: string }>();
@@ -318,7 +318,7 @@ export async function bookAppointment(
 
   const student = await db
     .prepare(
-      "SELECT id FROM users WHERE id = ? AND role IN ('student', 'STUDENT') AND is_active = 1",
+      "SELECT id FROM users WHERE id = ? AND role IN ('student', 'STUDENT')",
     )
     .bind(studentId)
     .first<{ id: string }>();
@@ -360,7 +360,7 @@ export async function bookAppointment(
 
   const advisor = await db
     .prepare(
-      "SELECT id FROM users WHERE id = ? AND role IN ('advisor', 'ADVISOR') AND is_active = 1",
+      "SELECT id FROM users WHERE id = ? AND role IN ('advisor', 'ADVISOR')",
     )
     .bind(slot.advisor_id)
     .first<{ id: string }>();
