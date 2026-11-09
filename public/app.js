@@ -26,10 +26,112 @@ const advisorNotification = document.querySelector("#advisor-notification");
 const form = document.querySelector("#request-form");
 const requests = document.querySelector("#requests");
 const message = document.querySelector("#message");
+const lecturerLookupForm = document.querySelector("#lecturer-lookup-form");
+const lecturerUidInput = document.querySelector("#lecturer-uid");
+const lecturerResult = document.querySelector("#lecturer-result");
+const loadPartnerLecturersButton = document.querySelector("#load-partner-lecturers");
+const partnerLecturers = document.querySelector("#partner-lecturers");
 let registerMode = false;
 let currentUser = null;
 let advisorRequestIds = null;
 let advisorPollingTimer = null;
+
+function renderLecturerResult(payload) {
+  const lecturer = payload?.data?.data || payload?.data || {};
+  const reviews = Array.isArray(lecturer.reviews) ? lecturer.reviews : [];
+  const summary = lecturer.reviewSummary;
+  lecturerResult.className = "partner-result";
+  lecturerResult.innerHTML = `
+    <div class="partner-profile">
+      <div>
+        <h3>${escapeHtml(lecturer.name || "Unnamed lecturer")}</h3>
+        <p class="muted">${escapeHtml(lecturer.uid || "")} · ${escapeHtml(lecturer.title || "Title not provided")}</p>
+      </div>
+      <span class="status">${escapeHtml(lecturer.schoolName || "School not provided")}</span>
+    </div>
+    <dl class="profile-details">
+      <div><dt>Department</dt><dd>${escapeHtml(lecturer.department || "Not provided")}</dd></div>
+      <div><dt>Office</dt><dd>${escapeHtml(lecturer.office || "Not provided")}</dd></div>
+      <div><dt>Email</dt><dd>${escapeHtml(lecturer.email || "Not provided")}</dd></div>
+    </dl>
+    ${summary ? `<div class="review-summary"><strong>Review summary</strong><span>Average: ${escapeHtml(summary.average ?? "—")} · ${escapeHtml(summary.count ?? 0)} reviews</span></div>` : ""}
+    ${reviews.length ? `<div class="reviews"><strong>Reviews</strong>${reviews.map((review) => `
+      <article class="review">
+        <div class="review-top"><span>${escapeHtml(review.author || "Anonymous")}</span><small>${escapeHtml(review.comment || "No comment")}</small></div>
+        <span class="muted">${escapeHtml(review.createdAtMillis || "")}</span>
+      </article>
+    `).join("")}</div>` : '<p class="empty">No reviews provided.</p>'}
+  `;
+}
+
+lecturerLookupForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const uid = lecturerUidInput.value.trim();
+  if (!uid) return;
+  lecturerResult.className = "partner-result empty";
+  lecturerResult.textContent = "Retrieving live lecturer data...";
+  try {
+    const response = await fetch(`/api/campus-insights/lecturers/by-uid/${encodeURIComponent(uid)}`);
+    const payload = await response.json();
+    if (!response.ok || !payload.success) throw new Error(payload.error || "Could not retrieve lecturer data");
+    renderLecturerResult(payload);
+  } catch (error) {
+    lecturerResult.className = "partner-result error";
+    lecturerResult.textContent = error.message;
+  }
+});
+
+function renderPartnerLecturers(items) {
+  partnerLecturers.innerHTML = items.length
+    ? items.map((item) => `
+      <article class="partner-lecturer-card">
+        <div class="partner-profile">
+          <div>
+            <h3>${escapeHtml(item.name || "Unnamed lecturer")}</h3>
+            <p class="muted">${escapeHtml(item.uid)} · ${escapeHtml(item.title || "Title not provided")}</p>
+          </div>
+          <span class="status">${escapeHtml(item.schoolName || "School not provided")}</span>
+        </div>
+        <dl class="profile-details">
+          <div><dt>Department</dt><dd>${escapeHtml(item.department || "Not provided")}</dd></div>
+          <div><dt>Office</dt><dd>${escapeHtml(item.office || "Not provided")}</dd></div>
+          <div><dt>Email</dt><dd>${escapeHtml(item.email || "Not provided")}</dd></div>
+        </dl>
+        ${item.reviewSummary ? `<p class="review-summary"><strong>Reviews</strong><span>Average: ${escapeHtml(item.reviewSummary.average ?? "—")} · ${escapeHtml(item.reviewSummary.count ?? 0)} reviews</span></p>` : ""}
+      </article>
+    `).join("")
+    : '<p class="empty">No partner lecturer records were returned.</p>';
+}
+
+loadPartnerLecturersButton.addEventListener("click", async () => {
+  loadPartnerLecturersButton.disabled = true;
+  partnerLecturers.innerHTML = '<p class="empty">Loading live Campus Insights lecturer data...</p>';
+  try {
+    const schoolsResponse = await fetch("/api/schools");
+    const schools = await schoolsResponse.json();
+    if (!schoolsResponse.ok || !Array.isArray(schools)) throw new Error("Could not load lecturer directory");
+    const schoolLecturers = await Promise.all(schools.map(async (school) => {
+      const response = await fetch(`/api/schools/${encodeURIComponent(school.schoolId)}/lecturers`);
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data)) throw new Error("Could not load lecturer directory");
+      return data;
+    }));
+    const records = [];
+    for (const lecturer of schoolLecturers.flat()) {
+      const response = await fetch(`/api/campus-insights/lecturers/by-uid/${encodeURIComponent(lecturer.uid)}`);
+      const payload = await response.json();
+      if (response.ok && payload.success) {
+        records.push(payload.data?.data || payload.data);
+      }
+    }
+    renderPartnerLecturers(records.filter(Boolean));
+  } catch (error) {
+    partnerLecturers.innerHTML = "";
+    showMessage(error.message, "error");
+  } finally {
+    loadPartnerLecturersButton.disabled = false;
+  }
+});
 
 function showMessage(text, kind = "") {
   message.textContent = text;
