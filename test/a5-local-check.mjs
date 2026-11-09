@@ -58,7 +58,8 @@ assert.equal((await request("/api/advising-requests")).status, 401);
 assert.equal((await request("/api/webhooks/partner")).status, 200);
 assert.equal((await request("/api/campus-insights/availability/prof_101?date=2026-09-25")).status, 503);
 assert.equal((await request("/api/campus-insights/lecturers/not-an-email")).status, 400);
-assert.equal((await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 503);
+const senderHeaders = { "content-type": "application/json", "x-api-key": "sender-test-key" };
+assert.equal((await request("/api/webhooks/send-test", { method: "POST", headers: senderHeaders, body: "{}" }, { PARTNER_ACCESS_API_KEY: "sender-test-key" })).status, 503);
 
 const body = JSON.stringify({ eventId: "evt-local-1", eventType: "slot_booked" });
 const valid = await signature(body, "receiver-secret");
@@ -141,14 +142,14 @@ globalThis.fetch = originalFetch;
 
 console.log("Campus Insights lecturer tests passed.");
 globalThis.fetch = async () => new Response('{"status":"Webhook received and logged successfully"}', { status: 200 });
-const senderEnv = { CAMPUS_INSIGHTS_ENABLED: "true", CAMPUS_INSIGHTS_API_KEY: "test-key", PARTNER_WEBHOOK_URL: "https://mock-campus-insights.test/webhook" };
-const sender = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ eventId: "mock-send-001", studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, senderEnv);
+const senderEnv = { CAMPUS_INSIGHTS_ENABLED: "true", CAMPUS_INSIGHTS_API_KEY: "test-key", PARTNER_WEBHOOK_URL: "https://mock-campus-insights.test/webhook", PARTNER_ACCESS_API_KEY: "sender-test-key" };
+const sender = await request("/api/webhooks/send-test", { method: "POST", headers: senderHeaders, body: JSON.stringify({ eventId: "mock-send-001", studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, senderEnv);
 assert.equal(sender.status, 200);
-const outboundDuplicate = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ eventId: "mock-send-001", studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, senderEnv);
+const outboundDuplicate = await request("/api/webhooks/send-test", { method: "POST", headers: senderHeaders, body: JSON.stringify({ eventId: "mock-send-001", studentId: "student-1", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, senderEnv);
 assert.equal(outboundDuplicate.status, 200);
 assert.equal((await outboundDuplicate.json()).duplicate, true);
 globalThis.fetch = async () => { throw new TypeError("network unavailable"); };
-const degraded = await request("/api/webhooks/send-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "student-2", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, senderEnv);
+const degraded = await request("/api/webhooks/send-test", { method: "POST", headers: senderHeaders, body: JSON.stringify({ studentId: "student-2", lecturerEmail: "john.doe@mfu.ac.th", bookedSlot: { date: "2026-09-25", time: "10:00-11:00" } }) }, senderEnv);
 assert.equal(degraded.status, 502);
 assert.equal((await degraded.json()).fallback, true);
 globalThis.fetch = originalFetch;

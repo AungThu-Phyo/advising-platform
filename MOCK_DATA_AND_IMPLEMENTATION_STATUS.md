@@ -419,7 +419,7 @@ Do not repeatedly call the production outbound webhook test endpoint. It can sen
 
 The current baseline is a working backend foundation, not a completed advising platform.
 
-The backend and Campus Insights integration have meaningful implementation and test coverage. The main missing areas are the frontend, AI agenda workflow, authentication, and final end-to-end integration.
+The backend, authenticated frontend, and Campus Insights integration have meaningful implementation and test coverage. The main missing areas are the AI agenda workflow, expanded authentication-flow tests, and final end-to-end integration.
 
 | Project Part             | Current Status              | Remaining Work                             |
 | ------------------------ | --------------------------- | ------------------------------------------ |
@@ -428,12 +428,12 @@ The backend and Campus Insights integration have meaningful implementation and t
 | Hono backend foundation  | Done                        | Complete required operations               |
 | D1 connection            | Done                        | Confirm final schema                       |
 | Advising CRUD            | Partially done              | Align fields, validation, and behavior     |
-| Frontend                 | Not implemented in baseline | Build three screens                        |
+| Frontend                 | Implemented for student/advisor portal | Expand feature coverage and browser tests |
 | AI agenda generation     | Not implemented in baseline | Add AI and fallback                        |
 | Campus Insights          | Partially done              | Verify partner behavior                    |
 | Inbound webhook          | Partially done              | More tests and final security review       |
-| Outbound webhook         | Partially done              | Protect endpoint and verify delivery       |
-| Authentication           | Not implemented             | Add login and authorization                |
+| Outbound webhook         | Implemented with API-key protection | Verify delivery and retry behavior       |
+| Authentication           | Implemented on auth branch | Expand flow tests and operational controls  |
 | Automated tests          | Partially done              | Add tests for all major features           |
 | Final end-to-end testing | Not done                    | Connect frontend, backend, and integration |
 
@@ -512,10 +512,11 @@ Remaining work:
 - Confirm the final D1 schema.
 - Confirm the request and response formats.
 - Validate every request field.
-- Implement or confirm lecturer approval/rejection.
+- Confirm lecturer approval/rejection behavior against the final contract.
 - Add the final agenda generation endpoint.
 - Make status transitions consistent.
-- Add authentication and ownership checks.
+- Authentication and ownership checks are implemented on the authentication
+  branch; add dedicated flow tests.
 - Test all CRUD operations against local/mock data.
 
 Do not assume the proposed `/agenda` and `/decision` routes already exist.
@@ -524,9 +525,9 @@ Do not assume the proposed `/agenda` and `/decision` routes already exist.
 
 ## 12. Frontend Implementation
 
-**Status: Not implemented in the current main baseline**
+**Status: Implemented on the authentication branch; broader browser coverage remains**
 
-Required screens:
+Implemented screens:
 
 ### Screen 1 — Request Advising
 
@@ -563,7 +564,8 @@ To do:
 - Add decision note.
 - Update the displayed request after a decision.
 
-Frontend testing should use the mock requests in Part 1.
+Frontend testing should use the mock requests in Part 1 and cover session
+restore, sign-out, expired sessions, and both student/advisor views.
 
 ---
 
@@ -656,17 +658,16 @@ What has been done:
 - Outbound webhook sender.
 - Basic payload validation.
 - Partner error handling.
+- `x-api-key` protection using `PARTNER_ACCESS_API_KEY` or the legacy
+  `ADVISING_PLATFORM_SECRET_KEY`.
 
 Remaining work:
 
-- Protect outbound webhook sender with authentication or an appropriate internal authorization mechanism.
 - Verify successful outbound delivery with the partner.
 - Verify duplicate event behavior.
 - Add tests for malformed payloads.
 - Confirm event storage and processing status.
 - Document retry and failure handling.
-
-**Security warning:** The current baseline's `/api/webhooks/send-test` endpoint is publicly reachable without complete authorization. It must be protected before final submission. Do not expose it as a public feature or repeatedly test it in production.
 
 ---
 
@@ -697,21 +698,29 @@ The mock data in this document is logical application data, not a confirmed SQL 
 
 ## 17. Authentication and Security
 
-**Status: Not completed**
+**Status: Implemented on the authentication branch**
 
-Remaining work:
+Completed:
 
-- Implement authentication.
-- Identify student and lecturer roles.
-- Restrict student access to their own requests.
-- Restrict lecturer approval/rejection actions.
-- Protect request update and deletion.
-- Protect outbound webhook routes.
-- Validate all request bodies.
-- Avoid exposing private student data.
-- Add appropriate rate limiting.
+- D1-backed email/password registration and login.
+- PBKDF2-SHA-256 password hashing with per-user salts.
+- Hashed random session tokens with expiry and revocation.
+- `HttpOnly`, `Secure`, `SameSite=Lax` session cookies.
+- Student, advisor, and admin role checks.
+- Student ownership checks for advising requests.
+- Advisor/admin checks for decisions and lecturer management.
+- Protected request update and deletion routes.
+- API-key protection for the outbound webhook sender.
+- Authentication columns are included in the canonical `0003` schema for fresh
+  databases, and `0009_create_auth_tables.sql` is a non-destructive
+  compatibility checkpoint for existing databases.
 
-This is an important requirement before final submission.
+Remaining hardening:
+
+- Add dedicated registration/login/logout/session integration tests.
+- Add edge rate limiting for public authentication routes.
+- Verify production migration state before deployment.
+- Complete the security review and end-to-end workflow test.
 
 ---
 
@@ -749,7 +758,7 @@ Remaining tests:
 - AI fallback.
 - Lecturer approval.
 - Lecturer rejection.
-- Authentication and ownership checks.
+- Registration, login, logout, session restoration, and ownership checks.
 - Frontend end-to-end workflow.
 
 The project requirement is at least seven meaningful automated tests. More coverage is recommended.
@@ -793,10 +802,13 @@ Recommended order:
 - Add editable agenda.
 - Test both AI and fallback paths.
 
-### Priority 5 — Complete security and integration
+### Priority 5 — Harden security and complete integration
 
-- Add authentication and roles.
-- Protect sensitive endpoints.
+- Add authentication-flow tests and edge rate limiting.
+- Verify migration `0009_create_auth_tables.sql` on the target D1 database
+  without rebuilding the `users` table.
+- Review role and ownership enforcement on sensitive endpoints.
+- Keep sensitive endpoints protected.
 - Coordinate with Campus Insights.
 - Verify webhook delivery.
 - Verify duplicate-event handling.
@@ -837,7 +849,7 @@ Use this checklist during team meetings.
 - [ ] Final database schema confirmed.
 - [ ] Approval/rejection workflow.
 - [ ] Agenda generation endpoint.
-- [ ] Authentication and authorization.
+- [x] Authentication and authorization on the authentication branch.
 - [ ] Complete validation and error handling.
 
 ### Frontend
@@ -865,7 +877,7 @@ Use this checklist during team meetings.
 - [x] Inbound HMAC verification.
 - [ ] Successful partner lookup verified.
 - [ ] Successful outbound delivery verified.
-- [ ] Outbound endpoint protected.
+- [x] Outbound endpoint protected with an API key.
 - [ ] Full integration testing.
 
 ### Final delivery
@@ -888,7 +900,8 @@ The biggest remaining implementation areas are:
 1. Frontend — three required screens.
 2. AI — agenda generation and deterministic fallback.
 3. Backend — final contract alignment and decision workflow.
-4. Security — authentication, authorization, and outbound endpoint protection.
+4. Security — authentication-flow tests, rate limiting, authorization review,
+   and outbound delivery verification.
 5. Integration — successful partner delivery verification.
 6. Testing — complete feature and end-to-end coverage.
 

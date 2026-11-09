@@ -394,18 +394,19 @@ These are suggested logical fields. They must be mapped to the existing database
 
 Before final submission:
 
-- Add authentication.
-- Add role-based access for students and lecturers.
+- Add authentication and role-based access for students and lecturers.
 - Students must only access their own requests.
 - Lecturers must only perform authorized lecturer actions.
 - Protect PATCH and DELETE operations.
-- Protect outbound webhook sender endpoints.
+- Protect outbound webhook sender endpoints with an internal API key.
 - Validate all incoming data.
 - Avoid exposing private student information.
 - Store API keys and webhook secrets as Worker secrets.
 - Never commit secrets to GitHub.
 
-The current baseline does not yet have complete authentication and authorization. This is a known remaining requirement.
+The authentication branch implements these requirements. Before final submission,
+run the authentication-flow tests, verify migration `0009_create_auth_tables.sql`
+on the target D1 database, and complete the security review.
 
 ---
 
