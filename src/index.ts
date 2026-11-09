@@ -1,10 +1,19 @@
 import { Hono } from "hono";
 import { CampusInsightsClient, type CampusInsightsConfig } from "./integrations/campusInsights";
 import { createWebhookSignature, verifyWebhookSignature } from "./utils/signature";
+import { bookAppointment, createSlot } from "./services/booking";
+import {
+  AvailabilityError,
+  generateLecturerSlots,
+  upsertLecturerProfile,
+  validateAvailabilityInput,
+  validateOverrideInput,
+} from "./services/lecturerAvailability";
 
 type Bindings = CloudflareBindings & CampusInsightsConfig & {
   WEBHOOK_SECRET?: string;
   PARTNER_WEBHOOK_URL?: string;
+  PARTNER_ACCESS_API_KEY?: string;
   DEFAULT_ADVISOR_EMAIL?: string;
 };
 type AuthUser = { id: string; email: string; name: string; role: "STUDENT" | "ADVISOR" | "ADMIN"; advisor_email?: string | null };
@@ -16,6 +25,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: { user: AuthUser } }>();
 const INBOUND_SIGNATURE_HEADER = "X-Webhook-Signature";
 const CAMPUS_INSIGHTS_SIGNATURE_HEADER = "x-signature";
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const SESSION_COOKIE = "advising_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -102,10 +112,23 @@ async function parseJsonBody(c: any): Promise<{ body?: Record<string, unknown>; 
   catch { return { error: c.json({ success: false, error: "Invalid JSON payload" }, 400) }; }
 }
 
+async function requirePartnerAccess(c: any): Promise<Response | null> {
+  const configuredKey = c.env.PARTNER_ACCESS_API_KEY ?? c.env.ADVISING_PLATFORM_SECRET_KEY;
+  const suppliedKey = c.req.header("x-api-key");
+  if (!configuredKey || !suppliedKey) return c.json({ success: false, error: "Partner API key required" }, 401);
+  const expected = new TextEncoder().encode(configuredKey);
+  const supplied = new TextEncoder().encode(suppliedKey);
+  const expectedDigest = new Uint8Array(await crypto.subtle.digest("SHA-256", expected));
+  const suppliedDigest = new Uint8Array(await crypto.subtle.digest("SHA-256", supplied));
+  if (!equalBytes(expectedDigest, suppliedDigest)) return c.json({ success: false, error: "Invalid partner API key" }, 401);
+  return null;
+}
+
 app.get("/", async (c) => {
   if (c.env.ASSETS && typeof c.env.ASSETS.fetch === "function") return c.env.ASSETS.fetch(c.req.raw);
   return c.json({ message: "Advising Platform — Campus Insights integration", endpoints: [
-    "GET /api/health", "GET /api/campus-insights/lecturers/:email",
+    "GET /api/health", "GET /api/campus-insights/lecturers/:email", "GET /api/campus-insights/lecturers/by-uid/:uid",
+    "GET /api/partner/lecturers", "GET /api/partner/lecturers/:uid", "GET /api/partner/lecturers/:uid/availability",
     "GET /api/campus-insights/availability/:lecturerId?date=YYYY-MM-DD",
     "GET /api/campus-insights/ratings/:lecturerId", "GET /api/campus-insights/topics?period=YYYY-MM",
     "GET /api/campus-insights/booking-stats?period=YYYY-MM", "POST /api/webhooks/partner",
@@ -265,6 +288,219 @@ app.patch("/api/advising-requests/:id/decision", async (c) => {
 
 // Campus Insights consumer endpoints. Only the lecturer endpoint has a confirmed partner URL.
 const client = (c: { env: Bindings }) => new CampusInsightsClient(c.env);
+
+function availabilityError(c: any, error: unknown): Response {
+  if (error instanceof AvailabilityError) return c.json({ error: error.message }, error.status);
+  throw error;
+}
+
+async function canManageLecturer(c: any, uid: string): Promise<boolean> {
+  const user = await currentUser(c);
+  if (!user || (user.role !== "ADMIN" && user.role !== "ADVISOR")) return false;
+  if (user.role === "ADMIN") return true;
+  const lecturer = await c.env.advising_db.prepare("SELECT email FROM lecturer_profiles WHERE uid = ?").bind(uid).first();
+  return Boolean(lecturer?.email && lecturer.email.toLowerCase() === user.email.toLowerCase());
+}
+
+async function requireLecturerManager(c: any, uid: string): Promise<Response | null> {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "Authentication required" }, 401);
+  if (!(await canManageLecturer(c, uid))) return c.json({ error: "Lecturer or administrator access required" }, 403);
+  return null;
+}
+
+app.get("/api/schools", async (c) => {
+  const result = await c.env.advising_db.prepare(
+    "SELECT school_id AS schoolId, school_name AS schoolName, COUNT(*) AS lecturerCount FROM lecturer_profiles GROUP BY school_id, school_name ORDER BY school_name",
+  ).all();
+  return c.json(result.results ?? []);
+});
+
+app.get("/api/schools/:schoolId/lecturers", async (c) => {
+  const schoolId = c.req.param("schoolId");
+  const department = c.req.query("department");
+  const search = c.req.query("search");
+  let query = "SELECT * FROM lecturer_profiles WHERE school_id = ?";
+  const values: string[] = [schoolId];
+  if (department) { query += " AND department = ?"; values.push(department); }
+  if (search) { query += " AND (name LIKE ? OR email LIKE ?)"; values.push(`%${search}%`, `%${search}%`); }
+  query += " ORDER BY name";
+  const result = await c.env.advising_db.prepare(query).bind(...values).all();
+  return c.json(result.results ?? []);
+});
+
+app.get("/api/lecturers/:uid", async (c) => {
+  const lecturer = await c.env.advising_db.prepare("SELECT * FROM lecturer_profiles WHERE uid = ?").bind(c.req.param("uid")).first();
+  return lecturer ? c.json(lecturer) : c.json({ error: "Lecturer not found" }, 404);
+});
+
+app.get("/api/lecturers/:uid/availability", async (c) => {
+  const date = c.req.query("date");
+  const durationMinutes = Number(c.req.query("durationMinutes") ?? 60);
+  if (!date) return c.json({ error: "date is required" }, 400);
+  try {
+    const lecturer = await c.env.advising_db.prepare("SELECT * FROM lecturer_profiles WHERE uid = ?").bind(c.req.param("uid")).first();
+    if (!lecturer) return c.json({ error: "Lecturer not found" }, 404);
+    return c.json({ lecturer, slots: await generateLecturerSlots(c.env.advising_db, c.req.param("uid"), date, durationMinutes) });
+  } catch (error) { return availabilityError(c, error); }
+});
+
+app.get("/api/availability", async (c) => {
+  const date = c.req.query("date");
+  if (!date) return c.json({ error: "date is required" }, 400);
+  const schoolId = c.req.query("schoolId");
+  const lecturerId = c.req.query("lecturerId");
+  const department = c.req.query("department");
+  let query = "SELECT * FROM lecturer_profiles WHERE 1 = 1";
+  const values: string[] = [];
+  if (schoolId) { query += " AND school_id = ?"; values.push(schoolId); }
+  if (lecturerId) { query += " AND uid = ?"; values.push(lecturerId); }
+  if (department) { query += " AND department = ?"; values.push(department); }
+  const lecturers = (await c.env.advising_db.prepare(query).bind(...values).all<{ uid: string; school_id: string; school_name: string; name: string | null; email: string | null }>()).results ?? [];
+  try {
+    const results = [];
+    for (const lecturer of lecturers) results.push({ lecturer, slots: await generateLecturerSlots(c.env.advising_db, lecturer.uid, date, Number(c.req.query("durationMinutes") ?? 60)) });
+    return c.json(results);
+  } catch (error) { return availabilityError(c, error); }
+});
+
+app.get("/api/partner/lecturers", async (c) => {
+  const denied = await requirePartnerAccess(c); if (denied) return denied;
+  const schoolId = c.req.query("schoolId");
+  const department = c.req.query("department");
+  let query = "SELECT uid, name, email, department, office, title, school_id, school_name, partner_updated_at FROM lecturer_profiles WHERE 1 = 1";
+  const values: string[] = [];
+  if (schoolId) { query += " AND school_id = ?"; values.push(schoolId); }
+  if (department) { query += " AND department = ?"; values.push(department); }
+  query += " ORDER BY school_name, name";
+  const result = await c.env.advising_db.prepare(query).bind(...values).all();
+  return c.json({ success: true, data: result.results ?? [] });
+});
+
+app.get("/api/partner/lecturers/:uid", async (c) => {
+  const denied = await requirePartnerAccess(c); if (denied) return denied;
+  const lecturer = await c.env.advising_db.prepare(
+    "SELECT uid, name, email, department, office, title, school_id, school_name, partner_updated_at FROM lecturer_profiles WHERE uid = ?",
+  ).bind(c.req.param("uid")).first();
+  return lecturer ? c.json({ success: true, data: lecturer }) : c.json({ success: false, error: "Lecturer not found" }, 404);
+});
+
+app.get("/api/partner/lecturers/:uid/availability", async (c) => {
+  const denied = await requirePartnerAccess(c); if (denied) return denied;
+  const date = c.req.query("date");
+  const durationMinutes = Number(c.req.query("durationMinutes") ?? 60);
+  if (!date) return c.json({ success: false, error: "date is required" }, 400);
+  try {
+    const lecturer = await c.env.advising_db.prepare(
+      "SELECT uid, name, email, department, office, title, school_id, school_name FROM lecturer_profiles WHERE uid = ?",
+    ).bind(c.req.param("uid")).first();
+    if (!lecturer) return c.json({ success: false, error: "Lecturer not found" }, 404);
+    return c.json({ success: true, data: { lecturer, slots: await generateLecturerSlots(c.env.advising_db, c.req.param("uid"), date, durationMinutes) } });
+  } catch (error) { return availabilityError(c, error); }
+});
+
+app.post("/api/lecturers/:uid/availability/weekly", async (c) => {
+  const denied = await requireLecturerManager(c, c.req.param("uid")); if (denied) return denied;
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  try {
+    const input = validateAvailabilityInput(parsed.body as any);
+    const profile = await c.env.advising_db.prepare("SELECT school_id FROM lecturer_profiles WHERE uid = ?").bind(c.req.param("uid")).first<{ school_id: string }>();
+    if (!profile) return c.json({ error: "Lecturer not found" }, 404);
+    if (profile.school_id !== input.schoolId) return c.json({ error: "schoolId does not match lecturer profile" }, 409);
+    const result = await c.env.advising_db.prepare(
+      "INSERT INTO lecturer_weekly_availability (lecturer_uid, school_id, day_of_week, start_time, end_time, timezone) VALUES (?, ?, ?, ?, ?, ?) RETURNING *",
+    ).bind(c.req.param("uid"), input.schoolId, input.dayOfWeek, input.startTime, input.endTime, input.timezone).first();
+    return c.json(result, 201);
+  } catch (error) { return availabilityError(c, error); }
+});
+
+app.patch("/api/lecturers/:uid/availability/weekly/:id", async (c) => {
+  const denied = await requireLecturerManager(c, c.req.param("uid")); if (denied) return denied;
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  try {
+    const input = validateAvailabilityInput(parsed.body as any);
+    const result = await c.env.advising_db.prepare(
+      "UPDATE lecturer_weekly_availability SET school_id = ?, day_of_week = ?, start_time = ?, end_time = ?, timezone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND lecturer_uid = ? RETURNING *",
+    ).bind(input.schoolId, input.dayOfWeek, input.startTime, input.endTime, input.timezone, c.req.param("id"), c.req.param("uid")).first();
+    return result ? c.json(result) : c.json({ error: "Availability not found" }, 404);
+  } catch (error) { return availabilityError(c, error); }
+});
+
+app.delete("/api/lecturers/:uid/availability/weekly/:id", async (c) => {
+  const denied = await requireLecturerManager(c, c.req.param("uid")); if (denied) return denied;
+  const result = await c.env.advising_db.prepare("DELETE FROM lecturer_weekly_availability WHERE id = ? AND lecturer_uid = ?").bind(c.req.param("id"), c.req.param("uid")).run();
+  return result.meta.changes === 1 ? c.body(null, 204) : c.json({ error: "Availability not found" }, 404);
+});
+
+app.put("/api/lecturers/:uid/availability/overrides/:date", async (c) => {
+  const denied = await requireLecturerManager(c, c.req.param("uid")); if (denied) return denied;
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  try {
+    const input = validateOverrideInput({ ...(parsed.body as any), date: c.req.param("date") });
+    const profile = await c.env.advising_db.prepare("SELECT school_id FROM lecturer_profiles WHERE uid = ?").bind(c.req.param("uid")).first<{ school_id: string }>();
+    if (!profile) return c.json({ error: "Lecturer not found" }, 404);
+    if (profile.school_id !== input.schoolId) return c.json({ error: "schoolId does not match lecturer profile" }, 409);
+    const result = await c.env.advising_db.prepare(`
+      INSERT INTO lecturer_availability_overrides (lecturer_uid, school_id, availability_date, is_available, start_time, end_time, timezone)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(lecturer_uid, availability_date) DO UPDATE SET
+        school_id = excluded.school_id, is_available = excluded.is_available,
+        start_time = excluded.start_time, end_time = excluded.end_time,
+        timezone = excluded.timezone, updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `).bind(c.req.param("uid"), input.schoolId, input.date, input.isAvailable ? 1 : 0, input.startTime ?? null, input.endTime ?? null, input.timezone).first();
+    return c.json(result);
+  } catch (error) { return availabilityError(c, error); }
+});
+
+app.delete("/api/lecturers/:uid/availability/overrides/:date", async (c) => {
+  const denied = await requireLecturerManager(c, c.req.param("uid")); if (denied) return denied;
+  const result = await c.env.advising_db.prepare("DELETE FROM lecturer_availability_overrides WHERE lecturer_uid = ? AND availability_date = ?").bind(c.req.param("uid"), c.req.param("date")).run();
+  return result.meta.changes === 1 ? c.body(null, 204) : c.json({ error: "Availability override not found" }, 404);
+});
+
+app.post("/api/lecturers/:uid/sync", async (c) => {
+  const user = await currentUser(c);
+  if (!user || user.role !== "ADMIN") return c.json({ error: "Administrator access required" }, 403);
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  try {
+    const record = parsed.body as Record<string, unknown>;
+    if (record.uid !== c.req.param("uid")) return c.json({ error: "uid must match the route parameter" }, 400);
+    return c.json(await upsertLecturerProfile(c.env.advising_db, record), 200);
+  }
+  catch (error) { return availabilityError(c, error); }
+});
+
+app.post("/api/lecturers/:uid/appointments", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.json({ error: "Authentication required" }, 401);
+  if (user.role !== "STUDENT") return c.json({ error: "Student access required" }, 403);
+  const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
+  const body = parsed.body as any;
+  try {
+    const lecturer = await c.env.advising_db.prepare("SELECT * FROM lecturer_profiles WHERE uid = ?").bind(c.req.param("uid")).first<{ uid: string; email: string | null; school_id: string }>();
+    if (!lecturer) return c.json({ error: "Lecturer not found" }, 404);
+    if (body.schoolId !== lecturer.school_id) return c.json({ error: "schoolId does not match lecturer profile" }, 409);
+    const starts = typeof body.startTime === "string" ? body.startTime : "";
+    const ends = typeof body.endTime === "string" ? body.endTime : "";
+    const startMinutes = Number(starts.slice(0, 2)) * 60 + Number(starts.slice(3));
+    const endMinutes = Number(ends.slice(0, 2)) * 60 + Number(ends.slice(3));
+    const generated = await generateLecturerSlots(c.env.advising_db, lecturer.uid, body.date, endMinutes - startMinutes);
+    const selected = generated.find((slot) => slot.startTime === starts && slot.endTime === ends);
+    if (!selected) return c.json({ error: "Selected time is not currently available" }, 409);
+    const advisor = lecturer.email ? await c.env.advising_db.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND role IN ('ADVISOR', 'advisor') AND is_active = 1").bind(lecturer.email).first<{ id: string }>() : null;
+    if (!advisor) return c.json({ error: "Lecturer is not linked to an active advisor account" }, 409);
+    const slot = await createSlot(c.env.advising_db, { advisorId: advisor.id, startsAt: selected.startsAt, endsAt: selected.endsAt });
+    return c.json(await bookAppointment(c.env.advising_db, { slotId: slot.id, studentId: user.id, agendaRaw: typeof body.agenda === "string" ? body.agenda : "" }), 201);
+  } catch (error) { return availabilityError(c, error); }
+});
+
+app.get("/api/campus-insights/lecturers/by-uid/:uid", async (c) => {
+  const uid = c.req.param("uid");
+  if (!isNonEmptyString(uid)) return c.json({ success: false, error: "Lecturer UID is required" }, 400);
+  const result = await client(c).getLecturerByUid(uid);
+  return c.json(result.body, result.status as 200 | 429 | 502 | 503 | 504);
+});
 app.get("/api/campus-insights/lecturers/:email", async (c) => { const email = c.req.param("email"); if (!isValidEmail(email)) return c.json({ success: false, error: "A valid lecturer email is required" }, 400); const result = await client(c).getLecturerByEmail(email); return c.json(result.body, result.status as 200 | 429 | 502 | 503 | 504); });
 app.get("/api/campus-insights/availability/:lecturerId", async (c) => { const lecturerId = c.req.param("lecturerId"); const date = c.req.query("date"); if (!isNonEmptyString(lecturerId) || !isNonEmptyString(date)) return c.json({ success: false, error: "lecturerId and date query parameter are required" }, 400); const result = await client(c).getConfigured("availability", { lecturerId, date }); return c.json(result.body, result.status as 200 | 429 | 502 | 503 | 504); });
 app.get("/api/campus-insights/ratings/:lecturerId", async (c) => { const lecturerId = c.req.param("lecturerId"); if (!isNonEmptyString(lecturerId)) return c.json({ success: false, error: "lecturerId is required" }, 400); const result = await client(c).getConfigured("ratings", { lecturerId }); return c.json(result.body, result.status as 200 | 429 | 502 | 503 | 504); });
@@ -275,9 +511,12 @@ async function receiveWebhook(c: any, source: string) {
   const secret = c.env.WEBHOOK_SECRET;
   if (!secret) return c.json({ success: false, error: "Webhook secret is not configured" }, 500);
   const rawBody = await c.req.text(); const signature = c.req.header(INBOUND_SIGNATURE_HEADER);
+  if (rawBody.length > 1_000_000) return c.json({ success: false, error: "Webhook payload is too large" }, 413);
   if (!signature) return c.json({ success: false, error: `${INBOUND_SIGNATURE_HEADER} header required` }, 401);
   if (!(await verifyWebhookSignature(rawBody, signature, secret))) return c.json({ success: false, error: "Invalid webhook signature" }, 401);
-  let payload: IncomingWebhookPayload; try { payload = JSON.parse(rawBody) as IncomingWebhookPayload; } catch { return c.json({ success: false, error: "Invalid JSON payload" }, 400); }
+  let parsedPayload: unknown; try { parsedPayload = JSON.parse(rawBody); } catch { return c.json({ success: false, error: "Invalid JSON payload" }, 400); }
+  if (!isRecord(parsedPayload)) return c.json({ success: false, error: "Webhook payload must be a JSON object" }, 400);
+  const payload = parsedPayload as IncomingWebhookPayload;
   const eventId = payload.eventId ?? payload.id; const eventType = payload.eventType ?? payload.type;
   if (!isNonEmptyString(eventId) || !isNonEmptyString(eventType)) return c.json({ success: false, error: "Webhook payload requires eventId and eventType" }, 400);
   try { await logIntegrationEvent(c.env.advising_db, eventId, eventType, source, "received", rawBody, JSON.stringify({ success: true, signatureVerified: true, eventId })); }
@@ -300,17 +539,23 @@ app.post("/api/webhooks/send-test", async (c) => {
 
   // Team 24 confirmed that this one shared key is used for both their API and webhook calls.
   const partnerSignature = c.env.CAMPUS_INSIGHTS_API_KEY;
+  if (c.env.CAMPUS_INSIGHTS_ENABLED !== "true") return c.json({ success: false, source: "campus-insights", fallback: true, error: "Campus Insights integration is disabled until the partner contract is configured" }, 503);
   if (!partnerUrl || !partnerSignature) return c.json({ success: false, source: "campus-insights", fallback: true, error: !partnerUrl ? "Partner webhook URL is not configured" : "Campus Insights API key is not configured" }, 503);
   const parsed = await parseJsonBody(c); if (parsed.error) return parsed.error;
-  const input = parsed.body as { studentId?: string; lecturerEmail?: string; bookedSlot?: { date?: string; time?: string } };
+  const input = parsed.body as { eventId?: string; studentId?: string; lecturerEmail?: string; bookedSlot?: { date?: string; time?: string } };
   const studentId = input.studentId; const lecturerEmail = input.lecturerEmail; const date = input.bookedSlot?.date; const time = input.bookedSlot?.time;
   if (!isNonEmptyString(studentId) || !isNonEmptyString(lecturerEmail) || !isValidEmail(lecturerEmail) || !isNonEmptyString(date) || !isNonEmptyString(time)) return c.json({ success: false, error: "studentId, lecturerEmail, bookedSlot.date, and bookedSlot.time are required" }, 400);
-  const payload: SlotBookedPayload = { eventId: `slot-booked-${crypto.randomUUID()}`, eventType: "slot_booked", studentId, lecturerEmail, bookedSlot: { date, time }, serverTimestamp: new Date().toISOString() };
+  const eventId = isNonEmptyString(input.eventId) ? input.eventId : `slot-booked-${crypto.randomUUID()}`;
+  if (isNonEmptyString(input.eventId)) {
+    const existing = await c.env.advising_db.prepare("SELECT event_id, status FROM integration_events WHERE event_id = ?").bind(eventId).first<{ event_id: string; status: string }>();
+    if (existing) return c.json({ success: true, duplicate: true, eventId, status: existing.status, message: "Integration event already processed" });
+  }
+  const payload: SlotBookedPayload = { eventId, eventType: "slot_booked", studentId, lecturerEmail, bookedSlot: { date, time }, serverTimestamp: new Date().toISOString() };
   const body = JSON.stringify(payload); const requestedAt = new Date().toISOString();
   try {
-    const response = await fetch(partnerUrl, { method: "POST", headers: { "Content-Type": "application/json", [CAMPUS_INSIGHTS_SIGNATURE_HEADER]: partnerSignature }, body, signal: AbortSignal.timeout(8_000) }); const partnerBody = await response.text();
-    await logIntegrationEvent(c.env.advising_db, payload.eventId, payload.eventType, "advising-platform-sender", response.ok ? "sent" : "failed", body, JSON.stringify({ requestedAt, partnerStatus: response.status, partnerBody }));
-    return c.json({ success: response.ok, eventId: payload.eventId, requestedAt, partnerStatus: response.status, partnerBody, fallback: !response.ok, recovery: response.ok ? undefined : "Retry manually after the partner has recovered." }, response.ok ? 200 : 502);
+    const response = await fetch(partnerUrl, { method: "POST", headers: { "Content-Type": "application/json", [CAMPUS_INSIGHTS_SIGNATURE_HEADER]: partnerSignature }, body, signal: AbortSignal.timeout(8_000) }); await response.body?.cancel();
+    await logIntegrationEvent(c.env.advising_db, payload.eventId, payload.eventType, "advising-platform-sender", response.ok ? "sent" : "failed", body, JSON.stringify({ requestedAt, partnerStatus: response.status }));
+    return c.json({ success: response.ok, eventId: payload.eventId, requestedAt, partnerStatus: response.status, fallback: !response.ok, recovery: response.ok ? undefined : "Retry manually after the partner has recovered." }, response.ok ? 200 : 502);
   } catch (error) {
     const reason = error instanceof Error && error.name === "TimeoutError" ? "Partner request timed out" : "Partner webhook request failed";
     await logIntegrationEvent(c.env.advising_db, payload.eventId, payload.eventType, "advising-platform-sender", "failed", body, JSON.stringify({ requestedAt, error: reason }));

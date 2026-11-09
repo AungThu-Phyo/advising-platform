@@ -1,0 +1,9 @@
+[
+  {
+    "studentId": "MOCK-STUDENT-001",
+    "name": "Alex Johnson",
+    "email": "alex.johnson@example.test",
+    "department": "Software Engineering",
+    "year": 3
+  }
+]

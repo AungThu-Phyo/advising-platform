@@ -1,0 +1,27 @@
+[
+  {
+    "departmentId": "MOCK-DEPT-SE",
+    "name": "Software Engineering",
+    "faculty": "Computing"
+  },
+  {
+    "departmentId": "MOCK-SCHOOL-ADT",
+    "name": "School of Applied Digital Technology",
+    "faculty": "Applied Digital Technology"
+  },
+  {
+    "departmentId": "MOCK-SCHOOL-MGMT",
+    "name": "School of Management",
+    "faculty": "Management"
+  },
+  {
+    "departmentId": "health-sciece",
+    "name": "School of Health Sciece",
+    "faculty": "Health Sciece"
+  },
+  {
+    "departmentId": "MOCK-SCHOOL-AGRO",
+    "name": "School of Agro Industry",
+    "faculty": "Agro Industry"
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "advisorId": "MOCK-ADVISOR-001",
+    "name": "Dr. Taylor Morgan",
+    "email": "taylor.morgan@example.test",
+    "departmentId": "MOCK-DEPT-SE"
+  }
+]

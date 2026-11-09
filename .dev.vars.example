@@ -1,5 +1,11 @@
 # Local development placeholders only. Do not put real values in this committed file.
 WEBHOOK_SECRET=replace-with-inbound-hmac-secret
 CAMPUS_INSIGHTS_API_KEY=replace-with-team-24-api-key
-PARTNER_WEBHOOK_URL=https://campus-insight-b9mp.onrender.com/api/v1/webhooks/advising-event
-DEFAULT_ADVISOR_EMAIL=john.doe@mfu.ac.th
+ADVISING_PLATFORM_SECRET_KEY=replace-with-partner-api-key
+PARTNER_ACCESS_API_KEY=replace-with-campus-insights-read-api-key
+CAMPUS_INSIGHTS_ENABLED=false
+CAMPUS_INSIGHTS_BASE_URL=https://replace-after-partner-documentation.example
+CAMPUS_INSIGHTS_LECTURER_PATH=/replace-after-partner-documentation
+CAMPUS_INSIGHTS_LECTURER_BY_UID_URL=https://replace-after-partner-documentation.example/api/v1/lecturers/{uid}
+PARTNER_WEBHOOK_URL=https://replace-after-partner-documentation.example/replace-after-partner-documentation
+DEFAULT_ADVISOR_EMAIL=advisor@example.test

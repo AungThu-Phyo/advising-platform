@@ -1,0 +1,10 @@
+[
+  {
+    "appointmentId": "MOCK-APPT-001",
+    "studentId": "MOCK-STUDENT-001",
+    "advisorId": "MOCK-ADVISOR-001",
+    "startsAt": "2026-11-12T09:00:00Z",
+    "endsAt": "2026-11-12T10:00:00Z",
+    "status": "booked"
+  }
+]
