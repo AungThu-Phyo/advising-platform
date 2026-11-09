@@ -16,6 +16,31 @@ h2 { margin-top: 0; }
 .user-bar { align-items: center; display: flex; justify-content: space-between; margin-top: 20px; }
 .user-bar small { color: #667085; display: block; margin-top: 4px; }
 .advisor-card { margin-top: 20px; }
+.partner-lookup { margin-top: 20px; }
+.partner-directory { margin-top: 20px; }
+.partner-directory-list { display: grid; gap: 14px; margin-top: 18px; }
+.partner-lecturer-card { border-top: 1px solid #e5e9f1; padding-top: 18px; }
+.partner-lecturer-card:first-child { border-top: 0; padding-top: 0; }
+.partner-lecturer-card .profile-details { margin-bottom: 0; }
+.partner-directory button:disabled { cursor: wait; opacity: .65; }
+.lookup-form { align-items: end; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.lookup-form label { grid-column: 1 / -1; margin-bottom: -6px; }
+.lookup-form button { margin: 0; }
+.partner-result { border-top: 1px solid #e5e9f1; margin-top: 20px; padding-top: 18px; }
+.partner-profile { align-items: start; display: flex; justify-content: space-between; gap: 16px; }
+.partner-profile h3 { margin: 0 0 4px; }
+.partner-profile p { margin: 0; }
+.muted { color: #667085; }
+.profile-details { display: grid; gap: 12px; grid-template-columns: repeat(3, 1fr); margin: 18px 0; }
+.profile-details div { background: #f7f9fc; border-radius: 8px; padding: 10px; }
+.profile-details dt { color: #667085; font-size: .8rem; }
+.profile-details dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.review-summary { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.reviews { border-top: 1px solid #e5e9f1; padding-top: 14px; }
+.review { border-top: 1px solid #e5e9f1; padding: 12px 0; }
+.review:first-of-type { border-top: 0; }
+.review-top { display: flex; justify-content: space-between; gap: 12px; }
+.review-top small { color: #566178; }
 .advisor-card span { color: #667085; display: block; margin-top: 6px; }
 .notification { background: #e8f4ff; border: 1px solid #9dccf5; border-radius: 8px; color: #14558b; margin-bottom: 16px; padding: 12px; }
 .hidden { display: none !important; }
@@ -41,4 +66,10 @@ button.secondary { background: #e9eefb; color: #314b9e; margin: 0; }
 .decision-actions button { margin-top: 10px; }
 .decision-actions .danger { background: #b42318; }
 .decision-note { border-left: 3px solid #4768d8; padding-left: 10px; }
-@media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .shell { padding-top: 28px; } }
+@media (max-width: 720px) {
+  .grid, .profile-details { grid-template-columns: 1fr; }
+  .shell { padding-top: 28px; }
+  .lookup-form { grid-template-columns: 1fr; }
+  .lookup-form button { width: 100%; }
+  .partner-profile, .review-top, .review-summary { align-items: flex-start; flex-direction: column; }
+}
