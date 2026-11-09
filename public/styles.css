@@ -15,7 +15,7 @@ h2 { margin-top: 0; }
 .card { background: white; border: 1px solid #dfe5ef; border-radius: 14px; padding: 22px; box-shadow: 0 8px 24px #1720330b; }
 .user-bar { align-items: center; display: flex; justify-content: space-between; margin-top: 20px; }
 .user-bar small { color: #667085; display: block; margin-top: 4px; }
-.advisor-card { margin-top: 20px; }
+#auth-panel { margin: 28px auto 0; max-width: 520px; }
 .partner-lookup { margin-top: 20px; }
 .partner-directory { margin-top: 20px; }
 .partner-directory-list { display: grid; gap: 14px; margin-top: 18px; }
@@ -41,7 +41,6 @@ h2 { margin-top: 0; }
 .review:first-of-type { border-top: 0; }
 .review-top { display: flex; justify-content: space-between; gap: 12px; }
 .review-top small { color: #566178; }
-.advisor-card span { color: #667085; display: block; margin-top: 6px; }
 .notification { background: #e8f4ff; border: 1px solid #9dccf5; border-radius: 8px; color: #14558b; margin-bottom: 16px; padding: 12px; }
 .hidden { display: none !important; }
 label { display: block; font-weight: 650; margin: 14px 0 6px; }

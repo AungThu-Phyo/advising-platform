@@ -35,10 +35,13 @@ loads only the authenticated student's requests through
 automatically.
 
 Student accounts can be assigned an advisor through `users.advisor_email`.
-The student UI reads the assigned advisor from `/api/student/advisor` and
-loads availability from `/api/student/advisor/availability`. Availability
-uses the configured Campus Insights endpoint when available and otherwise
-returns clearly labelled local demo slots.
+The student UI loads appointment availability for the assigned advisor from
+`/api/student/advisor/availability`. Availability uses the configured Campus
+Insights endpoint when available and otherwise returns clearly labelled local
+demo slots. Advisor details are supplied through the partner lecturer data
+surfaces rather than displayed as a separate student-view assignment card. The
+Campus Insights lookup and live partner directory are shown only after a
+student signs in.
 
 Apply migration `0004_add_advisor_assignments.sql` before using this flow.
 `DEFAULT_ADVISOR_EMAIL` can assign the confirmed classroom advisor to new

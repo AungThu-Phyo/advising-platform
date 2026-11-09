@@ -13,12 +13,12 @@ const passwordInput = document.querySelector("#password");
 const confirmPasswordInput = document.querySelector("#confirm-password");
 const userName = document.querySelector("#user-name");
 const userEmail = document.querySelector("#user-email");
-const advisor = document.querySelector("#advisor");
+const userBar = document.querySelector("#user-bar");
+const studentPartnerData = document.querySelector("#student-partner-data");
 const dateInput = document.querySelector("#date");
 const timeInput = document.querySelector("#time");
 const availabilityMessage = document.querySelector("#availability-message");
 const studentContent = document.querySelector("#app-panel > .grid");
-const studentAdvisorCard = document.querySelector("#app-panel > .advisor-card");
 const advisorPanel = document.querySelector("#advisor-panel");
 const advisorRequests = document.querySelector("#advisor-requests");
 const statusFilter = document.querySelector("#status-filter");
@@ -238,22 +238,6 @@ advisorRequests.addEventListener("click", async (event) => {
 statusFilter.addEventListener("change", loadAdvisorRequests);
 document.querySelector("#advisor-refresh").addEventListener("click", () => loadAdvisorRequests({ notify: false }));
 
-async function loadAdvisor() {
-  advisor.textContent = "Loading advisor information...";
-  try {
-    const response = await fetch("/api/student/advisor");
-    const data = await response.json();
-    if (response.status === 401) return showLoggedOut("Your session has expired. Please sign in again.");
-    if (!response.ok) throw new Error(data.error || "Could not load advisor information");
-    const profile = data.profile?.data?.data || data.profile?.data || {};
-    advisor.innerHTML = `<strong>${escapeHtml(profile.name || data.advisorEmail)}</strong>
-      <span>${escapeHtml(profile.school || profile.major || data.advisorEmail)}</span>`;
-  } catch (error) {
-    advisor.textContent = error.message;
-    advisor.className = "error";
-  }
-}
-
 async function loadAvailability() {
   timeInput.disabled = true;
   timeInput.innerHTML = '<option value="">Loading available slots...</option>';
@@ -308,6 +292,10 @@ function showLoggedOut(text = "") {
   advisorPollingTimer = null;
   authPanel.classList.remove("hidden");
   appPanel.classList.add("hidden");
+  userBar.classList.add("hidden");
+  studentPartnerData.classList.add("hidden");
+  document.querySelector("header .eyebrow").textContent = "Student portal";
+  document.querySelector("header .intro").textContent = "Sign in to view and submit your advising requests.";
   if (text) showMessage(text, "error");
 }
 
@@ -317,6 +305,7 @@ function showLoggedIn(user) {
   advisorNotification.classList.add("hidden");
   authPanel.classList.add("hidden");
   appPanel.classList.remove("hidden");
+  userBar.classList.remove("hidden");
   userName.textContent = user.name;
   userEmail.textContent = user.email;
   showMessage("");
@@ -324,11 +313,10 @@ function showLoggedIn(user) {
   document.querySelector("header .eyebrow").textContent = isAdvisor ? "Advisor portal" : "Student portal";
   document.querySelector("header .intro").textContent = isAdvisor ? "Review and decide advising requests." : "Submit an advising request and track your requests.";
   studentContent.classList.toggle("hidden", isAdvisor);
-  studentAdvisorCard.classList.toggle("hidden", isAdvisor);
+  studentPartnerData.classList.toggle("hidden", isAdvisor);
   advisorPanel.classList.toggle("hidden", !isAdvisor);
   if (isAdvisor) loadAdvisorRequests();
   else {
-    loadAdvisor();
     loadRequests();
   }
   if (advisorPollingTimer) clearInterval(advisorPollingTimer);
