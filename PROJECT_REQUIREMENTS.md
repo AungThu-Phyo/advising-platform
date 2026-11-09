@@ -405,7 +405,7 @@ Before final submission:
 - Never commit secrets to GitHub.
 
 The authentication branch implements these requirements. Before final submission,
-run the authentication-flow tests, verify migration `0008_create_auth_tables.sql`
+run the authentication-flow tests, verify migration `0009_create_auth_tables.sql`
 on the target D1 database, and complete the security review.
 
 ---

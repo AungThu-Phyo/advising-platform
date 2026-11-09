@@ -711,7 +711,7 @@ Completed:
 - Advisor/admin checks for decisions and lecturer management.
 - Protected request update and deletion routes.
 - API-key protection for the outbound webhook sender.
-- Migration `0008_create_auth_tables.sql`, which upgrades the existing
+- Migration `0009_create_auth_tables.sql`, which upgrades the existing
   `users` schema and preserves existing records.
 
 Remaining hardening:
@@ -804,7 +804,7 @@ Recommended order:
 ### Priority 5 — Harden security and complete integration
 
 - Add authentication-flow tests and edge rate limiting.
-- Verify migration `0008_create_auth_tables.sql` on the target D1 database.
+- Verify migration `0009_create_auth_tables.sql` on the target D1 database.
 - Review role and ownership enforcement on sensitive endpoints.
 - Keep sensitive endpoints protected.
 - Coordinate with Campus Insights.

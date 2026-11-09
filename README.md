@@ -24,7 +24,7 @@ migrations before using these endpoints:
 npx wrangler d1 migrations apply advising-db --remote
 ```
 
-Migration `0008_create_auth_tables.sql` upgrades the existing users table from
+Migration `0009_create_auth_tables.sql` upgrades the existing users table from
 the original advising schema. The old duplicate `0003_create_auth_tables.sql`
 has been removed; existing user records are preserved, but legacy users
 without password credentials must be assigned a password through an
