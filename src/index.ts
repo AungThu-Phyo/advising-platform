@@ -17,7 +17,7 @@ type Bindings = CloudflareBindings & CampusInsightsConfig & {
   DEFAULT_ADVISOR_EMAIL?: string;
 };
 type AuthUser = { id: string; email: string; name: string; role: "STUDENT" | "ADVISOR" | "ADMIN"; advisor_email?: string | null };
-type StoredUser = AuthUser & { password_hash: string; password_salt: string; password_iterations: number };
+type StoredUser = AuthUser & { password_hash: string | null; password_salt: string | null; password_iterations: number | null };
 type IncomingWebhookPayload = { eventId?: string; eventType?: string; id?: string; type?: string; [key: string]: unknown };
 type SlotBookedPayload = { eventId: string; eventType: "slot_booked"; studentId: string; bookedSlot: { date: string; time: string }; lecturerEmail: string; serverTimestamp: string };
 
@@ -88,7 +88,7 @@ async function currentUser(c: { req: { raw: Request }; env: Bindings }): Promise
   const row = await c.env.advising_db.prepare(
     `SELECT users.id, users.email, users.name, users.role, users.advisor_email
      FROM sessions JOIN users ON users.id = sessions.user_id
-     WHERE sessions.token_hash = ? AND sessions.expires_at > CURRENT_TIMESTAMP`,
+     WHERE sessions.token_hash = ? AND sessions.expires_at > CURRENT_TIMESTAMP AND users.is_active = 1`,
   ).bind(await digest(token)).first<AuthUser>();
   return row ?? null;
 }
@@ -168,7 +168,9 @@ app.post("/api/auth/login", async (c) => {
   const password = typeof body.password === "string" ? body.password : "";
   const stored = await c.env.advising_db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<StoredUser>();
   if (!stored || !isValidEmail(email) || !isNonEmptyString(password)) return c.json({ error: "Invalid email or password" }, 401);
-  const valid = equalBytes(decodeBase64Url(stored.password_hash), decodeBase64Url(await hashPassword(password, decodeBase64Url(stored.password_salt), stored.password_iterations)));
+  const valid = stored.password_hash && stored.password_salt && stored.password_iterations
+    ? equalBytes(decodeBase64Url(stored.password_hash), decodeBase64Url(await hashPassword(password, decodeBase64Url(stored.password_salt), stored.password_iterations)))
+    : false;
   if (!valid) return c.json({ error: "Invalid email or password" }, 401);
   const token = await createSession(c.env.advising_db, stored.id);
   return new Response(JSON.stringify({ user: publicUser(stored) }), { headers: { "content-type": "application/json", "Set-Cookie": sessionCookie(token) } });
@@ -535,6 +537,7 @@ app.post("/api/webhooks/partner", async (c) => receiveWebhook(c, "campus-insight
 app.post("/api/integration/provider-test", async (c) => receiveWebhook(c, "provider-test"));
 
 app.post("/api/webhooks/send-test", async (c) => {
+  const denied = await requirePartnerAccess(c); if (denied) return denied;
   const partnerUrl = c.env.PARTNER_WEBHOOK_URL;
 
   // Team 24 confirmed that this one shared key is used for both their API and webhook calls.
