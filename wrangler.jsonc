@@ -12,6 +12,11 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	"vars": {
+		"CAMPUS_INSIGHTS_ENABLED": "true",
+		"CAMPUS_INSIGHTS_BASE_URL": "https://campus-insights-k88b.onrender.com",
+		"CAMPUS_INSIGHTS_LECTURER_PATH": "/api/v1/lecturers/{uid}"
+	},
 	"assets": {
 		"directory": "./public",
 		"binding": "ASSETS"

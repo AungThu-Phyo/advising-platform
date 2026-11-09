@@ -41,6 +41,18 @@ loads only the authenticated student's requests through
 `GET /api/advising-requests`. The browser handles the HttpOnly session cookie
 automatically.
 
+Students can search for a lecturer after signing in and choose that lecturer as
+their advisor. The selection is verified through Campus Insights and stored in
+`users.advisor_email` by `POST /api/student/advisor`; subsequent requests are
+saved with that advisor email and appear in the advisor's request queue.
+
+For the mock lecturer roster, each lecturer opens “Sign in as Advisor,” chooses
+“Set up advisor password” on first use, and creates an individual password for
+their email in an active `lecturer_profiles` record. Later sign-ins verify that
+password. Password setup is first-claim for this mock roster and does not verify
+ownership of real university email addresses; use university SSO or verified
+email enrollment before using real lecturer identities.
+
 Student accounts can be assigned an advisor through `users.advisor_email`.
 The student UI loads appointment availability for the assigned advisor from
 `/api/student/advisor/availability`. Availability uses the configured Campus

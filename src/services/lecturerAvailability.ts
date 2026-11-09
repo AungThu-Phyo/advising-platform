@@ -9,6 +9,8 @@ export type LecturerProfile = {
   school_name: string;
   reviews: string | null;
   partner_updated_at: string | null;
+  is_active: number;
+  synced_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -141,8 +143,8 @@ export async function upsertLecturerProfile(db: D1Database, input: unknown): Pro
   const lecturer = normalizeLecturerRecord(input);
   await db.prepare(`
     INSERT INTO lecturer_profiles
-      (uid, name, email, department, office, title, school_id, school_name, reviews, partner_updated_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      (uid, name, email, department, office, title, school_id, school_name, reviews, partner_updated_at, synced_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     ON CONFLICT(uid) DO UPDATE SET
       name = excluded.name,
       email = excluded.email,
@@ -153,6 +155,7 @@ export async function upsertLecturerProfile(db: D1Database, input: unknown): Pro
       school_name = excluded.school_name,
       reviews = excluded.reviews,
       partner_updated_at = excluded.partner_updated_at,
+      synced_at = CURRENT_TIMESTAMP,
       updated_at = CURRENT_TIMESTAMP
   `).bind(
     lecturer.uid,
