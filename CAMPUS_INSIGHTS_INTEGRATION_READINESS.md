@@ -75,12 +75,27 @@ API-key-protected partner routes:
 - `GET /api/partner/lecturers`
 - `GET /api/partner/lecturers/:uid`
 - `GET /api/partner/lecturers/:uid/availability?date=YYYY-MM-DD`
+- `GET /api/partner/availability?date=YYYY-MM-DD&durationMinutes=60`
+- `GET /api/partner/availability/weekly`
 
 Send the shared read key in the `x-api-key` header. Production should use the
 `PARTNER_ACCESS_API_KEY` Worker secret. For backward compatibility, the
 existing `ADVISING_PLATFORM_SECRET_KEY` is accepted when the dedicated secret
 is not configured. These routes intentionally do not expose student identities,
 appointment notes, or raw appointment records.
+
+The live D1 database contains fictional recurring availability for 15 lecturers.
+The partner availability response includes scheduled slots even when a lecturer
+does not yet have a linked internal advisor account; those slots are marked
+`bookable: false` until the account mapping is completed.
+
+Use the aggregate availability endpoint when Campus Insights needs all lecturer
+slots for one date. Use the UID-specific endpoint when it needs one lecturer.
+Use the weekly endpoint when Campus Insights needs the recurring schedule for all
+15 lecturers without choosing a date.
+
+The live D1 database also contains dated 45-minute slots for all 15 fictional
+lecturers from 2026-11-10 through 2026-11-30 in `lecturer_date_slots`.
 
 ## 3. Integration-related database tables
 

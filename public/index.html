@@ -14,6 +14,38 @@
       <p class="intro">Submit an advising request and track your requests.</p>
     </header>
 
+    <section class="card partner-lookup">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Campus Insights</p>
+          <h2>Find a lecturer</h2>
+        </div>
+      </div>
+      <p class="intro">Search live lecturer information by matching UID.</p>
+      <form id="lecturer-lookup-form" class="lookup-form">
+        <label for="lecturer-uid">Lecturer UID</label>
+        <input id="lecturer-uid" type="text" value="management-1" placeholder="For example, management-1" required>
+        <button type="submit">Retrieve lecturer</button>
+      </form>
+      <div id="lecturer-result" class="partner-result empty" aria-live="polite">
+        Enter a UID to retrieve live Campus Insights data.
+      </div>
+    </section>
+
+    <section class="card partner-directory">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Live partner data</p>
+          <h2>Campus Insights lecturers</h2>
+        </div>
+        <button id="load-partner-lecturers" class="secondary" type="button">Load all lecturers</button>
+      </div>
+      <p class="intro">Retrieve the current lecturer records from Campus Insights using matching UIDs.</p>
+      <div id="partner-lecturers" class="partner-directory-list" aria-live="polite">
+        <p class="empty">Click “Load all lecturers” to retrieve partner data.</p>
+      </div>
+    </section>
+
     <section id="auth-panel" class="card">
       <div class="section-heading">
         <h2 id="auth-title">Sign in</h2>

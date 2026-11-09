@@ -30,6 +30,10 @@ const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 const SESSION_COOKIE = "advising_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const PASSWORD_ITERATIONS = 100_000;
+const ALLOWED_CORS_ORIGINS = new Set([
+  "https://campus-insight-623f0.web.app",
+  "http://localhost:5173",
+]);
 const DEMO_AVAILABILITY = [
   { date: "2026-11-10", time: "09:00-10:00" },
   { date: "2026-11-10", time: "10:00-11:00" },
@@ -124,11 +128,41 @@ async function requirePartnerAccess(c: any): Promise<Response | null> {
   return null;
 }
 
+app.use("*", async (c, next) => {
+  const origin = c.req.header("Origin");
+  const allowedOrigin = origin && ALLOWED_CORS_ORIGINS.has(origin) ? origin : null;
+  if (c.req.method === "OPTIONS") {
+    if (!allowedOrigin) return c.json({ error: "Origin is not allowed" }, 403);
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": allowedOrigin,
+        "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, X-API-Key",
+        "Access-Control-Max-Age": "86400",
+        Vary: "Origin",
+      },
+    });
+  }
+  await next();
+  const response = c.res;
+  if (!allowedOrigin) return response;
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", allowedOrigin);
+  headers.set("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
+  headers.set("Vary", "Origin");
+  c.res = new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  return c.res;
+});
+
 app.get("/", async (c) => {
   if (c.env.ASSETS && typeof c.env.ASSETS.fetch === "function") return c.env.ASSETS.fetch(c.req.raw);
   return c.json({ message: "Advising Platform — Campus Insights integration", endpoints: [
     "GET /api/health", "GET /api/campus-insights/lecturers/:email", "GET /api/campus-insights/lecturers/by-uid/:uid",
     "GET /api/partner/lecturers", "GET /api/partner/lecturers/:uid", "GET /api/partner/lecturers/:uid/availability",
+    "GET /api/partner/availability?date=YYYY-MM-DD",
+    "GET /api/partner/availability/weekly",
     "GET /api/campus-insights/availability/:lecturerId?date=YYYY-MM-DD",
     "GET /api/campus-insights/ratings/:lecturerId", "GET /api/campus-insights/topics?period=YYYY-MM",
     "GET /api/campus-insights/booking-stats?period=YYYY-MM", "POST /api/webhooks/partner",
@@ -397,8 +431,64 @@ app.get("/api/partner/lecturers/:uid/availability", async (c) => {
       "SELECT uid, name, email, department, office, title, school_id, school_name FROM lecturer_profiles WHERE uid = ?",
     ).bind(c.req.param("uid")).first();
     if (!lecturer) return c.json({ success: false, error: "Lecturer not found" }, 404);
-    return c.json({ success: true, data: { lecturer, slots: await generateLecturerSlots(c.env.advising_db, c.req.param("uid"), date, durationMinutes) } });
+    return c.json({ success: true, data: { lecturer, slots: await generateLecturerSlots(c.env.advising_db, c.req.param("uid"), date, durationMinutes, new Date(), true) } });
   } catch (error) { return availabilityError(c, error); }
+});
+
+app.get("/api/partner/availability", async (c) => {
+  const denied = await requirePartnerAccess(c); if (denied) return denied;
+  const date = c.req.query("date");
+  const durationMinutes = Number(c.req.query("durationMinutes") ?? 60);
+  if (!date) return c.json({ success: false, error: "date is required" }, 400);
+  try {
+    const lecturers = (await c.env.advising_db.prepare(
+      "SELECT uid, name, email, department, office, title, school_id, school_name FROM lecturer_profiles ORDER BY school_name, name",
+    ).all()).results ?? [];
+    const data = [];
+    for (const lecturer of lecturers) {
+      data.push({
+        lecturer,
+        slots: await generateLecturerSlots(c.env.advising_db, String(lecturer.uid), date, durationMinutes, new Date(), true),
+      });
+    }
+    return c.json({ success: true, date, durationMinutes, data });
+  } catch (error) { return availabilityError(c, error); }
+});
+
+app.get("/api/partner/availability/weekly", async (c) => {
+  const denied = await requirePartnerAccess(c); if (denied) return denied;
+  const schoolId = c.req.query("schoolId");
+  const query = `
+    SELECT
+      p.uid, p.name, p.email, p.department, p.office, p.title,
+      p.school_id, p.school_name,
+      a.day_of_week, a.start_time, a.end_time, a.timezone
+    FROM lecturer_profiles p
+    LEFT JOIN lecturer_weekly_availability a ON a.lecturer_uid = p.uid
+    ${schoolId ? "WHERE p.school_id = ?" : ""}
+    ORDER BY p.school_name, p.name, a.day_of_week, a.start_time
+  `;
+  const result = await c.env.advising_db.prepare(query).bind(...(schoolId ? [schoolId] : [])).all();
+  const grouped = new Map<string, { lecturer: Record<string, unknown>; weeklyAvailability: Record<string, unknown>[] }>();
+  for (const row of result.results ?? []) {
+    const uid = String(row.uid);
+    let entry = grouped.get(uid);
+    if (!entry) {
+      const { day_of_week, start_time, end_time, timezone, ...lecturer } = row;
+      entry = { lecturer, weeklyAvailability: [] };
+      grouped.set(uid, entry);
+      if (day_of_week == null) continue;
+    }
+    if (row.day_of_week != null) {
+      entry.weeklyAvailability.push({
+        dayOfWeek: row.day_of_week,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        timezone: row.timezone,
+      });
+    }
+  }
+  return c.json({ success: true, data: Array.from(grouped.values()) });
 });
 
 app.post("/api/lecturers/:uid/availability/weekly", async (c) => {

@@ -219,6 +219,7 @@ export async function generateLecturerSlots(
   date: string,
   durationMinutes: number,
   now = new Date(),
+  includeUnbookable = false,
 ): Promise<GeneratedSlot[]> {
   const targetDate = validateDate(date);
   if (!Number.isInteger(durationMinutes) || durationMinutes <= 0 || durationMinutes > 240) throw new AvailabilityError("durationMinutes must be between 1 and 240");
@@ -249,5 +250,5 @@ export async function generateLecturerSlots(
       slots.push({ lecturerId: lecturerUid, schoolId: lecturer.school_id, date: targetDate, startTime, endTime, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), timezone: range.timezone, bookable: startsAt.getTime() >= now.getTime() + 2 * 60 * 60 * 1000 && !overlaps && Boolean(advisor) });
     }
   }
-  return slots.filter((slot) => slot.bookable);
+  return includeUnbookable ? slots : slots.filter((slot) => slot.bookable);
 }
