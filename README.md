@@ -7,7 +7,7 @@ npm run dev
 npm run deploy
 ```
 
-## Authentication
+## Authentications
 
 The Worker uses D1-backed email/password authentication instead of Firebase Auth:
 
