@@ -24,11 +24,12 @@ migrations before using these endpoints:
 npx wrangler d1 migrations apply advising-db --remote
 ```
 
-Migration `0009_create_auth_tables.sql` upgrades the existing users table from
-the original advising schema. The old duplicate `0003_create_auth_tables.sql`
-has been removed; existing user records are preserved, but legacy users
-without password credentials must be assigned a password through an
-administrative workflow.
+Migration `0003_create_advising_mvp.sql` contains the canonical authentication
+columns for fresh databases. Migration `0009_create_auth_tables.sql` is a
+non-destructive compatibility checkpoint for existing databases; it creates
+the session table and indexes if they are missing without replacing user data.
+Existing users without password credentials must be assigned a password
+through an administrative workflow.
 
 New registrations are `STUDENT` accounts. `ADVISOR` and `ADMIN` roles should be
 assigned through a controlled database/admin workflow; they cannot be requested
