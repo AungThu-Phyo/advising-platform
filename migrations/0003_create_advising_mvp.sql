@@ -2,13 +2,10 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'STUDENT' CHECK (role IN ('STUDENT', 'ADVISOR', 'ADMIN')),
+    email TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('student', 'advisor', 'admin')),
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
-    password_hash TEXT,
-    password_salt TEXT,
-    password_iterations INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
